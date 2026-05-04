@@ -1,18 +1,10 @@
-import os
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
 from typing import Any
 
 import psycopg
-from dotenv import load_dotenv
 from psycopg import sql
 from psycopg.rows import TupleRow
 
 from app.application.domain import Product
-from app.application.ports import DataGateway
-
-load_dotenv()
-DATABASE_URL: str = os.environ["DATABASE_URL"]
 
 PRODUCT_COLUMNS: tuple[str, ...] = (
     "id",
@@ -51,15 +43,6 @@ PRODUCT_SELECT_QUERY = sql.SQL(
     table=sql.Identifier("public", "products"),
     id_column=sql.Identifier("id"),
 )
-
-
-@asynccontextmanager
-async def get_cursor_context(
-    connection_string: str,
-) -> AsyncIterator[psycopg.AsyncCursor[TupleRow]]:
-    async with await psycopg.AsyncConnection.connect(connection_string) as conn:
-        async with conn.cursor() as cur:
-            yield cur
 
 
 def _dict(value: Any) -> dict[str, Any]:
@@ -118,24 +101,9 @@ def _product_from_row(row: TupleRow) -> Product:
     )
 
 
-class DataMapper(DataGateway):
-    def __init__(self, connection_string: str) -> None:
-        self._connection_string = connection_string
-
-    async def check_db(self) -> bool:
-        async with get_cursor_context(self._connection_string) as cur:
-            await cur.execute("SELECT 1")
-            row: TupleRow | None = await cur.fetchone()
-            return row is not None and row[0] == 1
-
-    async def get_products(self, limit: int = 100, offset: int = 0) -> list[Product]:
-        if limit < 1:
-            raise ValueError("limit must be greater than 0")
-        if offset < 0:
-            raise ValueError("offset must be greater than or equal to 0")
-
-        async with get_cursor_context(self._connection_string) as cur:
-            await cur.execute(PRODUCT_SELECT_QUERY, (limit, offset))
-            rows: list[TupleRow] = await cur.fetchall()
-
-        return [_product_from_row(row) for row in rows]
+async def get_products(
+    cur: psycopg.AsyncCursor[TupleRow], limit: int, offset: int
+) -> list[Product]:
+    await cur.execute(PRODUCT_SELECT_QUERY, (limit, offset))
+    rows: list[TupleRow] = await cur.fetchall()
+    return [_product_from_row(row) for row in rows]
