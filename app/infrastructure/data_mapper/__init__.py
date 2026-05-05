@@ -49,5 +49,5 @@ class DataMapper(DataGateway):
         async with get_cursor_context(self._connection_string) as cur:
             res: Product | None = await execute_get_product(cur, product_id)
             if res is None:
-                raise ValueError("Doesn't exists!")
+                raise Exception(f"We don't have a product with {product_id} product id")
             return res
