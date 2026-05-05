@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Path, Query
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
 
 from app.application.ports import DataGateway
 from app.application.services.products_service import ProductDTO, ProductsService
@@ -14,7 +14,7 @@ products_service: ProductsService = ProductsService(data_mapper)
 
 
 class ProductResponse(BaseModel):
-    model_config = ConfigDict(title="Product")
+    # model_config = ConfigDict(title="Product")
 
     id: int
     vendor_code: str
