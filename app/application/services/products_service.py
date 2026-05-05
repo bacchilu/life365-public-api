@@ -76,7 +76,16 @@ class ProductsService:
 
     async def get_products(self, limit: int = 100, offset: int = 0) -> list[ProductDTO]:
         try:
-            products = await self._data_mapper.get_products(limit=limit, offset=offset)
+            products: list[Product] = await self._data_mapper.get_products(
+                limit=limit, offset=offset
+            )
             return [_product_to_dto(product) for product in products]
         except Exception as e:
             raise DBException("Products lookup failed") from e
+
+    async def get_product(self, product_id: int) -> ProductDTO:
+        try:
+            product: Product = await self._data_mapper.get_product(product_id)
+            return _product_to_dto(product)
+        except Exception as e:
+            raise DBException("Product lookup failed") from e

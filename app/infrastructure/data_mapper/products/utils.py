@@ -1,7 +1,5 @@
 from typing import Any
 
-import psycopg
-from psycopg import sql
 from psycopg.rows import TupleRow
 
 from app.application.domain import Product
@@ -36,14 +34,6 @@ PRODUCT_COLUMNS: tuple[str, ...] = (
     "last_update",
 )
 
-PRODUCT_SELECT_QUERY = sql.SQL(
-    "SELECT {columns} FROM {table} ORDER BY {id_column} LIMIT %s OFFSET %s"
-).format(
-    columns=sql.SQL(", ").join(sql.Identifier(column) for column in PRODUCT_COLUMNS),
-    table=sql.Identifier("public", "products"),
-    id_column=sql.Identifier("id"),
-)
-
 
 def _dict(value: Any) -> dict[str, Any]:
     if isinstance(value, dict):
@@ -69,7 +59,7 @@ def _int_tuple(value: Any) -> tuple[int, ...]:
     return tuple(item for item in value if isinstance(item, int))
 
 
-def _product_from_row(row: TupleRow) -> Product:
+def product_from_row(row: TupleRow) -> Product:
     return Product(
         id=row[0],
         vendor_code=row[1],
@@ -99,11 +89,3 @@ def _product_from_row(row: TupleRow) -> Product:
         creation_date=row[25],
         last_update=row[26] if row[26] is not None else 0,
     )
-
-
-async def get_products(
-    cur: psycopg.AsyncCursor[TupleRow], limit: int, offset: int
-) -> list[Product]:
-    await cur.execute(PRODUCT_SELECT_QUERY, (limit, offset))
-    rows: list[TupleRow] = await cur.fetchall()
-    return [_product_from_row(row) for row in rows]

@@ -10,6 +10,7 @@ from psycopg.rows import TupleRow
 
 from app.application.domain import Product
 from app.application.ports import DataGateway
+from app.infrastructure.data_mapper.products import get_product as execute_get_product
 from app.infrastructure.data_mapper.products import get_products as execute_get_products
 
 load_dotenv()
@@ -43,3 +44,10 @@ class DataMapper(DataGateway):
 
         async with get_cursor_context(self._connection_string) as cur:
             return await execute_get_products(cur, limit=limit, offset=offset)
+
+    async def get_product(self, product_id: int) -> Product:
+        async with get_cursor_context(self._connection_string) as cur:
+            res: Product | None = await execute_get_product(cur, product_id)
+            if res is None:
+                raise ValueError("Doesn't exists!")
+            return res
