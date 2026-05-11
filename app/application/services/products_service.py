@@ -4,7 +4,7 @@ from typing import Any
 
 from app.application.domain import Product
 from app.application.exceptions import DBException
-from app.application.ports import DataGateway
+from app.application.ports import ProductsGateway
 
 
 @dataclass(slots=True)
@@ -71,7 +71,7 @@ def _product_to_dto(product: Product) -> ProductDTO:
 
 
 class ProductsService:
-    def __init__(self, data_mapper: DataGateway) -> None:
+    def __init__(self, data_mapper: ProductsGateway) -> None:
         self._data_mapper = data_mapper
 
     async def get_products(self, limit: int = 100, offset: int = 0) -> list[ProductDTO]:

@@ -4,13 +4,13 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Path, Query
 from pydantic import BaseModel, Field
 
-from app.application.ports import DataGateway
+from app.application.ports import ProductsGateway
 from app.application.services.products_service import ProductDTO, ProductsService
-from app.infrastructure.data_mapper import DATABASE_URL, DataMapper
+from app.infrastructure.data_mapper import DATABASE_URL, ProductsDataMapper
 
 router: APIRouter = APIRouter(tags=["products"])
-data_mapper: DataGateway = DataMapper(DATABASE_URL)
-products_service: ProductsService = ProductsService(data_mapper)
+products_gateway: ProductsGateway = ProductsDataMapper(DATABASE_URL)
+products_service: ProductsService = ProductsService(products_gateway)
 
 
 class ProductResponse(BaseModel):

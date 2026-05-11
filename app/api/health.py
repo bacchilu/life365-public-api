@@ -1,12 +1,13 @@
 from fastapi import APIRouter
 from pydantic import BaseModel
 
+from app.application.ports import CheckGateway
 from app.application.services.health_service import HealthService
-from app.infrastructure.data_mapper import DATABASE_URL, DataMapper
+from app.infrastructure.data_mapper import DATABASE_URL, CheckDataMapper
 
 router: APIRouter = APIRouter(tags=["health"])
-data_mapper: DataMapper = DataMapper(DATABASE_URL)
-health_service: HealthService = HealthService(data_mapper)
+check_gateway: CheckGateway = CheckDataMapper(DATABASE_URL)
+health_service: HealthService = HealthService(check_gateway)
 
 
 class HealthResponse(BaseModel):

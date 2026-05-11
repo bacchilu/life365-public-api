@@ -1,4 +1,4 @@
-__all__ = ["DATABASE_URL", "DataMapper"]
+__all__ = ["CheckDataMapper", "DATABASE_URL", "ProductsDataMapper"]
 
 import os
 from collections.abc import AsyncIterator
@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 from psycopg.rows import TupleRow
 
 from app.application.domain import Product
-from app.application.ports import DataGateway
+from app.application.ports import CheckGateway, ProductsGateway
 from app.infrastructure.data_mapper.products import get_product as execute_get_product
 from app.infrastructure.data_mapper.products import get_products as execute_get_products
 
@@ -26,7 +26,7 @@ async def get_cursor_context(
             yield cur
 
 
-class DataMapper(DataGateway):
+class CheckDataMapper(CheckGateway):
     def __init__(self, connection_string: str) -> None:
         self._connection_string = connection_string
 
@@ -35,6 +35,11 @@ class DataMapper(DataGateway):
             await cur.execute("SELECT 1")
             row: TupleRow | None = await cur.fetchone()
             return row is not None and row[0] == 1
+
+
+class ProductsDataMapper(ProductsGateway):
+    def __init__(self, connection_string: str) -> None:
+        self._connection_string = connection_string
 
     async def get_products(self, limit: int = 100, offset: int = 0) -> list[Product]:
         if limit < 1:

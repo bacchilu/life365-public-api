@@ -5,6 +5,7 @@ import pytest
 from app.application.domain import (
     AuthenticatedUser,
     LoginResult,
+    PrincipalIdentity,
     PrincipalType,
     Product,
     Role,
@@ -54,6 +55,23 @@ def test_auth_domain_objects_can_be_constructed() -> None:
     assert result.session == session
     assert result.access_token == "opaque-access-token"
     assert result.session.revoked is False
+
+
+def test_principal_identity_represents_token_free_identity() -> None:
+    identity = PrincipalIdentity(
+        id=123,
+        username="buyer",
+        role=Role.BUYER,
+        principal_type=PrincipalType.USER,
+    )
+
+    assert identity.id == 123
+    assert identity.username == "buyer"
+    assert identity.role is Role.BUYER
+    assert identity.principal_type is PrincipalType.USER
+    assert not hasattr(identity, "token_id")
+    assert not hasattr(identity, "access_token")
+    assert not hasattr(identity, "session")
 
 
 def test_product_stays_importable_from_domain_package() -> None:

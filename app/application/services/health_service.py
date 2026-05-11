@@ -1,9 +1,9 @@
 from app.application.exceptions import DBException
-from app.application.ports import DataGateway
+from app.application.ports import CheckGateway
 
 
 class HealthService:
-    def __init__(self, data_mapper: DataGateway) -> None:
+    def __init__(self, data_mapper: CheckGateway) -> None:
         self._data_mapper = data_mapper
 
     def health(self) -> bool:

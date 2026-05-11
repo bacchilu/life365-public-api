@@ -1,6 +1,7 @@
 from app.application.domain.auth import (
     AuthenticatedUser,
     LoginResult,
+    PrincipalIdentity,
     PrincipalType,
     Role,
     TokenSession,
@@ -12,6 +13,7 @@ from app.application.domain.product import Product
 __all__ = [
     "AuthenticatedUser",
     "LoginResult",
+    "PrincipalIdentity",
     "PrincipalType",
     "Product",
     "Role",

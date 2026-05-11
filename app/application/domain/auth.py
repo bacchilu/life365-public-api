@@ -43,6 +43,14 @@ class PrincipalType(StrEnum):
 
 
 @dataclass(frozen=True, slots=True)
+class PrincipalIdentity:
+    id: int
+    username: str
+    role: Role
+    principal_type: PrincipalType
+
+
+@dataclass(frozen=True, slots=True)
 class AuthenticatedUser:
     id: int
     username: str
