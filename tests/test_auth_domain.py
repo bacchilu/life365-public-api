@@ -57,6 +57,31 @@ def test_auth_domain_objects_can_be_constructed() -> None:
     assert result.session.revoked is False
 
 
+def test_login_result_repr_does_not_expose_access_token() -> None:
+    issued_at = datetime.now(timezone.utc)
+    user = AuthenticatedUser(
+        id=123,
+        username="buyer",
+        role=Role.BUYER,
+        principal_type=PrincipalType.USER,
+        token_id="token-id",
+    )
+    session = TokenSession(
+        token_id="token-id",
+        principal_id=user.id,
+        principal_type=user.principal_type,
+        issued_at=issued_at,
+        expires_at=issued_at + timedelta(days=30),
+    )
+    result = LoginResult(
+        user=user,
+        session=session,
+        access_token="opaque-access-token",
+    )
+
+    assert "opaque-access-token" not in repr(result)
+
+
 def test_principal_identity_represents_token_free_identity() -> None:
     identity = PrincipalIdentity(
         id=123,
@@ -108,6 +133,12 @@ def test_internal_user_principal_type_returns_user() -> None:
 
 def test_principal_id_converts_to_jwt_subject() -> None:
     assert principal_id_to_subject(123) == "123"
+
+
+@pytest.mark.parametrize("principal_id", [0, -1, True])
+def test_invalid_principal_ids_are_rejected(principal_id: int) -> None:
+    with pytest.raises(AuthenticationException, match="Invalid credentials"):
+        principal_id_to_subject(principal_id)
 
 
 def test_jwt_subject_converts_to_runtime_principal_id() -> None:
