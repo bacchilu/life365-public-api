@@ -1,5 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
 from app.application.domain import (
     AuthenticatedUser,
     LoginResult,
@@ -7,7 +9,10 @@ from app.application.domain import (
     Product,
     Role,
     TokenSession,
+    principal_id_to_subject,
+    subject_to_principal_id,
 )
+from app.application.exceptions import AuthenticationException
 
 
 def test_role_values_are_normalized_runtime_values() -> None:
@@ -56,3 +61,42 @@ def test_product_stays_importable_from_domain_package() -> None:
 
     assert product.id == 1
     assert product.vendor_code == "vendor"
+
+
+@pytest.mark.parametrize("source_role", ["ADMIN", "admin", " ADMIN "])
+def test_admin_role_normalization(source_role: str) -> None:
+    assert Role.from_internal_role(source_role) is Role.ADMIN
+
+
+@pytest.mark.parametrize("source_role", ["BUYER", "buyer", " BUYER "])
+def test_buyer_role_normalization(source_role: str) -> None:
+    assert Role.from_internal_role(source_role) is Role.BUYER
+
+
+@pytest.mark.parametrize("source_role", ["CUSTOMER", "", "unknown"])
+def test_unsupported_internal_roles_are_rejected(source_role: str) -> None:
+    with pytest.raises(AuthenticationException, match="Invalid credentials"):
+        Role.from_internal_role(source_role)
+
+
+def test_customer_auth_helpers_return_customer_runtime_values() -> None:
+    assert Role.from_customer() is Role.CUSTOMER
+    assert PrincipalType.from_customer() is PrincipalType.CUSTOMER
+
+
+def test_internal_user_principal_type_returns_user() -> None:
+    assert PrincipalType.from_internal_user() is PrincipalType.USER
+
+
+def test_principal_id_converts_to_jwt_subject() -> None:
+    assert principal_id_to_subject(123) == "123"
+
+
+def test_jwt_subject_converts_to_runtime_principal_id() -> None:
+    assert subject_to_principal_id("123") == 123
+
+
+@pytest.mark.parametrize("subject", ["", "abc", "0", "-1"])
+def test_invalid_jwt_subjects_are_rejected(subject: str) -> None:
+    with pytest.raises(AuthenticationException, match="Invalid credentials"):
+        subject_to_principal_id(subject)
