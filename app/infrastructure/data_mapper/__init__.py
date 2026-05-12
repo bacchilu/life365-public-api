@@ -1,4 +1,9 @@
-__all__ = ["CheckDataMapper", "DATABASE_URL", "ProductsDataMapper"]
+__all__ = [
+    "AuthenticationDataMapper",
+    "CheckDataMapper",
+    "DATABASE_URL",
+    "ProductsDataMapper",
+]
 
 import os
 from collections.abc import AsyncIterator
@@ -8,13 +13,19 @@ import psycopg
 from dotenv import load_dotenv
 from psycopg.rows import TupleRow
 
-from app.application.domain import Product
-from app.application.ports import CheckGateway, ProductsGateway
+from app.application.domain import PrincipalIdentity, Product, TokenSession
+from app.application.exceptions import AuthenticationException
+from app.application.ports import AuthenticationGateway, CheckGateway, ProductsGateway
+from app.infrastructure.data_mapper.auth import (
+    get_internal_user_row,
+    internal_user_identity_from_row,
+)
 from app.infrastructure.data_mapper.products import get_product as execute_get_product
 from app.infrastructure.data_mapper.products import get_products as execute_get_products
 
 load_dotenv()
 DATABASE_URL: str = os.environ["DATABASE_URL"]
+_INVALID_CREDENTIALS_MESSAGE = "Invalid credentials"
 
 
 @asynccontextmanager
@@ -35,6 +46,42 @@ class CheckDataMapper(CheckGateway):
             await cur.execute("SELECT 1")
             row: TupleRow | None = await cur.fetchone()
             return row is not None and row[0] == 1
+
+
+class AuthenticationDataMapper(AuthenticationGateway):
+    def __init__(self, connection_string: str) -> None:
+        self._connection_string = connection_string
+
+    async def authenticate_internal_user(
+        self, username: str, password: str
+    ) -> PrincipalIdentity:
+        async with get_cursor_context(self._connection_string) as cur:
+            row: TupleRow | None = await get_internal_user_row(cur, username)
+
+        if row is None:
+            raise AuthenticationException(_INVALID_CREDENTIALS_MESSAGE)
+
+        return internal_user_identity_from_row(row, password)
+
+    async def authenticate_customer(
+        self, username: str, password: str
+    ) -> PrincipalIdentity:
+        raise NotImplementedError("Customer authentication is not implemented yet")
+
+    async def register_token_session(self, session: TokenSession) -> None:
+        raise NotImplementedError("Token session storage is not implemented yet")
+
+    async def get_token_session(self, token_id: str) -> TokenSession | None:
+        raise NotImplementedError("Token session storage is not implemented yet")
+
+    async def is_token_known(self, token_id: str) -> bool:
+        raise NotImplementedError("Token session storage is not implemented yet")
+
+    async def is_token_revoked(self, token_id: str) -> bool:
+        raise NotImplementedError("Token revocation is not implemented yet")
+
+    async def revoke_token(self, token_id: str) -> None:
+        raise NotImplementedError("Token revocation is not implemented yet")
 
 
 class ProductsDataMapper(ProductsGateway):
