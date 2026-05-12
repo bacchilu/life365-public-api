@@ -79,6 +79,26 @@ async def test_authentication_data_mapper_authenticates_enabled_buyer(
 
 
 @pytest.mark.anyio
+async def test_authentication_data_mapper_authenticates_customer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cursor = FakeCursor([(3, "customer-login", "stored-credential")])
+    monkeypatch.setattr(data_mapper_module, "get_cursor_context", _context_for(cursor))
+    mapper = AuthenticationDataMapper("postgresql://unused")
+
+    identity = await mapper.authenticate_customer(
+        username="customer-login",
+        password="stored-credential",
+    )
+
+    assert identity.id == 3
+    assert identity.username == "customer-login"
+    assert identity.role is Role.CUSTOMER
+    assert identity.principal_type is PrincipalType.CUSTOMER
+    assert cursor.execute_params == [("customer-login",)]
+
+
+@pytest.mark.anyio
 @pytest.mark.parametrize(
     ("rows", "submitted_credential"),
     [
@@ -123,15 +143,34 @@ async def test_authentication_data_mapper_rejects_internal_user_failures_generic
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("method_name", "rows", "username"),
+    [
+        (
+            "authenticate_internal_user",
+            [(1, "admin-user", "stored-credential", "ADMIN", True)],
+            "admin-user",
+        ),
+        (
+            "authenticate_customer",
+            [(3, "customer-login", "stored-credential")],
+            "customer-login",
+        ),
+    ],
+)
 async def test_authentication_data_mapper_does_not_return_credentials(
     monkeypatch: pytest.MonkeyPatch,
+    method_name: str,
+    rows: list[tuple[Any, ...]],
+    username: str,
 ) -> None:
-    cursor = FakeCursor([(1, "admin-user", "stored-credential", "ADMIN", True)])
+    cursor = FakeCursor(rows)
     monkeypatch.setattr(data_mapper_module, "get_cursor_context", _context_for(cursor))
     mapper = AuthenticationDataMapper("postgresql://unused")
+    authenticate = getattr(mapper, method_name)
 
-    identity = await mapper.authenticate_internal_user(
-        username="admin-user",
+    identity = await authenticate(
+        username=username,
         password="stored-credential",
     )
 
@@ -139,3 +178,39 @@ async def test_authentication_data_mapper_does_not_return_credentials(
     assert not hasattr(identity, "stored_credential")
     assert not hasattr(identity, "access_token")
     assert "stored-credential" not in repr(identity)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("rows", "submitted_credential"),
+    [
+        ([], "submitted-credential"),
+        (
+            [(3, "customer-login", "stored-credential")],
+            "wrong-credential",
+        ),
+        (
+            [
+                (3, "customer-login", "stored-credential"),
+                (4, "customer-login", "stored-credential"),
+            ],
+            "stored-credential",
+        ),
+    ],
+)
+async def test_authentication_data_mapper_rejects_customer_failures_generically(
+    monkeypatch: pytest.MonkeyPatch,
+    rows: list[tuple[Any, ...]],
+    submitted_credential: str,
+) -> None:
+    cursor = FakeCursor(rows)
+    monkeypatch.setattr(data_mapper_module, "get_cursor_context", _context_for(cursor))
+    mapper = AuthenticationDataMapper("postgresql://unused")
+
+    with pytest.raises(AuthenticationException) as exc:
+        await mapper.authenticate_customer(
+            username="customer-login",
+            password=submitted_credential,
+        )
+
+    assert str(exc.value) == "Invalid credentials"

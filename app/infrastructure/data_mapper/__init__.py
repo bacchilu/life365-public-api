@@ -17,6 +17,8 @@ from app.application.domain import PrincipalIdentity, Product, TokenSession
 from app.application.exceptions import AuthenticationException
 from app.application.ports import AuthenticationGateway, CheckGateway, ProductsGateway
 from app.infrastructure.data_mapper.auth import (
+    customer_identity_from_row,
+    get_customer_row,
     get_internal_user_row,
     internal_user_identity_from_row,
 )
@@ -66,7 +68,13 @@ class AuthenticationDataMapper(AuthenticationGateway):
     async def authenticate_customer(
         self, username: str, password: str
     ) -> PrincipalIdentity:
-        raise NotImplementedError("Customer authentication is not implemented yet")
+        async with get_cursor_context(self._connection_string) as cur:
+            row: TupleRow | None = await get_customer_row(cur, username)
+
+        if row is None:
+            raise AuthenticationException(_INVALID_CREDENTIALS_MESSAGE)
+
+        return customer_identity_from_row(row, password)
 
     async def register_token_session(self, session: TokenSession) -> None:
         raise NotImplementedError("Token session storage is not implemented yet")
