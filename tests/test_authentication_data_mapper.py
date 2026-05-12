@@ -7,11 +7,16 @@ import pytest
 
 os.environ.setdefault("DATABASE_URL", "postgresql://localhost/test")
 
+import app.infrastructure.data_mapper as data_mapper_root
 import app.infrastructure.data_mapper.auth as auth_mapper_module
 from app.application.domain import PrincipalType, Role
 from app.application.exceptions import AuthenticationException
 from app.infrastructure.data_mapper import AuthenticationDataMapper
+from app.infrastructure.data_mapper.auth import (
+    AuthenticationDataMapper as AuthDataMapper,
+)
 from app.infrastructure.data_mapper.auth import verify_legacy_password
+from app.infrastructure.data_mapper.auth.customer import CUSTOMER_COLUMNS
 
 
 class FakeCursor:
@@ -37,6 +42,16 @@ def _context_for(cursor: FakeCursor) -> Any:
 def test_verify_legacy_password_compares_credentials() -> None:
     assert verify_legacy_password("matching-credential", "matching-credential") is True
     assert verify_legacy_password("submitted-credential", "stored-credential") is False
+
+
+def test_data_mapper_root_exports_authentication_data_mapper() -> None:
+    assert data_mapper_root.AuthenticationDataMapper is AuthenticationDataMapper
+    assert data_mapper_root.AuthenticationDataMapper is AuthDataMapper
+
+
+def test_customer_authentication_columns_do_not_include_verified() -> None:
+    assert CUSTOMER_COLUMNS == ("id", "login", "pass")
+    assert "verified" not in CUSTOMER_COLUMNS
 
 
 @pytest.mark.anyio
@@ -214,3 +229,86 @@ async def test_authentication_data_mapper_rejects_customer_failures_generically(
         )
 
     assert str(exc.value) == "Invalid credentials"
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("method_name", "rows", "username"),
+    [
+        (
+            "authenticate_internal_user",
+            [(1, "internal-user", "stored-credential", "ADMIN")],
+            "internal-user",
+        ),
+        (
+            "authenticate_customer",
+            [(3, "customer-login")],
+            "customer-login",
+        ),
+    ],
+)
+async def test_authentication_data_mapper_rejects_malformed_rows_generically(
+    monkeypatch: pytest.MonkeyPatch,
+    method_name: str,
+    rows: list[tuple[Any, ...]],
+    username: str,
+) -> None:
+    cursor = FakeCursor(rows)
+    monkeypatch.setattr(auth_mapper_module, "get_cursor_context", _context_for(cursor))
+    mapper = AuthenticationDataMapper("postgresql://unused")
+    authenticate = getattr(mapper, method_name)
+
+    with pytest.raises(AuthenticationException) as exc:
+        await authenticate(username=username, password="stored-credential")
+
+    assert str(exc.value) == "Invalid credentials"
+
+
+@pytest.mark.anyio
+async def test_authentication_data_mapper_uses_same_generic_failure_message(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    mapper = AuthenticationDataMapper("postgresql://unused")
+    cases = [
+        (
+            "authenticate_internal_user",
+            [],
+            "internal-user",
+            "submitted-credential",
+        ),
+        (
+            "authenticate_internal_user",
+            [(1, "internal-user", "stored-credential", "ADMIN", True)],
+            "internal-user",
+            "wrong-credential",
+        ),
+        (
+            "authenticate_customer",
+            [],
+            "customer-login",
+            "submitted-credential",
+        ),
+        (
+            "authenticate_customer",
+            [(3, "customer-login", "stored-credential")],
+            "customer-login",
+            "wrong-credential",
+        ),
+    ]
+    messages: list[str] = []
+
+    for method_name, rows, username, submitted_credential in cases:
+        cursor = FakeCursor(rows)
+        monkeypatch.setattr(
+            auth_mapper_module,
+            "get_cursor_context",
+            _context_for(cursor),
+        )
+        authenticate = getattr(mapper, method_name)
+
+        with pytest.raises(AuthenticationException) as exc:
+            await authenticate(username=username, password=submitted_credential)
+
+        messages.append(str(exc.value))
+
+    assert messages == ["Invalid credentials"] * len(cases)
