@@ -1,3 +1,4 @@
+from collections.abc import Mapping
 from typing import Protocol
 
 from app.application.domain import PrincipalIdentity, Product, TokenSession
@@ -33,3 +34,7 @@ class AuthenticationGateway(Protocol):
     async def is_token_revoked(self, token_id: str) -> bool: ...
 
     async def revoke_token(self, token_id: str) -> None: ...
+
+
+class TokenCodec(Protocol):
+    def encode(self, claims: Mapping[str, object]) -> str: ...

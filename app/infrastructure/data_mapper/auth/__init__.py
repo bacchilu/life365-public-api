@@ -24,6 +24,8 @@ _INVALID_CREDENTIALS_MESSAGE = "Invalid credentials"
 class AuthenticationDataMapper(AuthenticationGateway):
     def __init__(self, connection_string: str) -> None:
         self._connection_string = connection_string
+        self._sessions: dict[str, TokenSession] = {}
+        self._revoked_token_ids: set[str] = set()
 
     async def authenticate_internal_user(
         self, username: str, password: str
@@ -48,16 +50,19 @@ class AuthenticationDataMapper(AuthenticationGateway):
         return customer_identity_from_row(row, password)
 
     async def register_token_session(self, session: TokenSession) -> None:
-        raise NotImplementedError("Token session storage is not implemented yet")
+        self._sessions[session.token_id] = session
 
     async def get_token_session(self, token_id: str) -> TokenSession | None:
-        raise NotImplementedError("Token session storage is not implemented yet")
+        return self._sessions.get(token_id)
 
     async def is_token_known(self, token_id: str) -> bool:
-        raise NotImplementedError("Token session storage is not implemented yet")
+        return token_id in self._sessions
 
     async def is_token_revoked(self, token_id: str) -> bool:
-        raise NotImplementedError("Token revocation is not implemented yet")
+        session: TokenSession | None = self._sessions.get(token_id)
+        return token_id in self._revoked_token_ids or (
+            session is not None and session.revoked
+        )
 
     async def revoke_token(self, token_id: str) -> None:
-        raise NotImplementedError("Token revocation is not implemented yet")
+        self._revoked_token_ids.add(token_id)

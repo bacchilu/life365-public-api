@@ -1,6 +1,7 @@
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import pytest
@@ -9,7 +10,7 @@ os.environ.setdefault("DATABASE_URL", "postgresql://localhost/test")
 
 import app.infrastructure.data_mapper as data_mapper_root
 import app.infrastructure.data_mapper.auth as auth_mapper_module
-from app.application.domain import PrincipalType, Role
+from app.application.domain import PrincipalType, Role, TokenSession
 from app.application.exceptions import AuthenticationException
 from app.infrastructure.data_mapper import AuthenticationDataMapper
 from app.infrastructure.data_mapper.auth import (
@@ -52,6 +53,26 @@ def test_data_mapper_root_exports_authentication_data_mapper() -> None:
 def test_customer_authentication_columns_do_not_include_verified() -> None:
     assert CUSTOMER_COLUMNS == ("id", "login", "pass")
     assert "verified" not in CUSTOMER_COLUMNS
+
+
+@pytest.mark.anyio
+async def test_authentication_data_mapper_stores_token_sessions_in_memory() -> None:
+    mapper = AuthenticationDataMapper("postgresql://unused")
+    issued_at = datetime.now(timezone.utc)
+    session = TokenSession(
+        token_id="token-id",
+        principal_id=1,
+        principal_type=PrincipalType.USER,
+        issued_at=issued_at,
+        expires_at=issued_at + timedelta(days=30),
+    )
+
+    await mapper.register_token_session(session)
+
+    assert await mapper.get_token_session("token-id") == session
+    assert await mapper.is_token_known("token-id") is True
+    assert await mapper.is_token_known("unknown-token-id") is False
+    assert await mapper.is_token_revoked("token-id") is False
 
 
 @pytest.mark.anyio
