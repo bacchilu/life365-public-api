@@ -1,4 +1,4 @@
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
@@ -6,12 +6,17 @@ from app.application.domain import (
     AuthenticatedUser,
     LoginResult,
     PrincipalIdentity,
+    PrincipalType,
+    Role,
     TokenSession,
     principal_id_to_subject,
+    subject_to_principal_id,
 )
+from app.application.exceptions import AuthenticationException
 from app.application.ports import AuthenticationGateway, TokenCodec
 
 TOKEN_EXPIRATION_DAYS = 30
+_INVALID_CREDENTIALS_MESSAGE = "Invalid credentials"
 
 
 def _utc_now() -> datetime:
@@ -20,6 +25,29 @@ def _utc_now() -> datetime:
 
 def _new_token_id() -> str:
     return str(uuid4())
+
+
+def _required_string_claim(claims: Mapping[str, object], name: str) -> str:
+    claim: object | None = claims.get(name)
+
+    if not isinstance(claim, str) or claim.strip() == "":
+        raise AuthenticationException(_INVALID_CREDENTIALS_MESSAGE)
+
+    return claim
+
+
+def _role_from_claim(claim: str) -> Role:
+    try:
+        return Role(claim)
+    except ValueError as exc:
+        raise AuthenticationException(_INVALID_CREDENTIALS_MESSAGE) from exc
+
+
+def _principal_type_from_claim(claim: str) -> PrincipalType:
+    try:
+        return PrincipalType(claim)
+    except ValueError as exc:
+        raise AuthenticationException(_INVALID_CREDENTIALS_MESSAGE) from exc
 
 
 class AuthService:
@@ -72,3 +100,57 @@ class AuthService:
             session=session,
             access_token=access_token,
         )
+
+    async def validate_token(self, token: str | None) -> AuthenticatedUser:
+        if token is None or token.strip() == "":
+            raise AuthenticationException(_INVALID_CREDENTIALS_MESSAGE)
+
+        claims: Mapping[str, object] = self._token_codec.decode(token.strip())
+        token_id: str = _required_string_claim(claims, "jti")
+        principal_id: int = subject_to_principal_id(
+            _required_string_claim(claims, "sub")
+        )
+        username: str = _required_string_claim(claims, "username")
+        role: Role = _role_from_claim(_required_string_claim(claims, "role"))
+        principal_type: PrincipalType = _principal_type_from_claim(
+            _required_string_claim(claims, "principal_type")
+        )
+
+        if not await self._authentication_gateway.is_token_known(token_id):
+            raise AuthenticationException(_INVALID_CREDENTIALS_MESSAGE)
+
+        session: (
+            TokenSession | None
+        ) = await self._authentication_gateway.get_token_session(token_id)
+        if session is None:
+            raise AuthenticationException(_INVALID_CREDENTIALS_MESSAGE)
+
+        if (
+            session.token_id != token_id
+            or session.principal_id != principal_id
+            or session.principal_type is not principal_type
+        ):
+            raise AuthenticationException(_INVALID_CREDENTIALS_MESSAGE)
+
+        if await self._authentication_gateway.is_token_revoked(token_id):
+            raise AuthenticationException(_INVALID_CREDENTIALS_MESSAGE)
+
+        if session.expires_at <= self._clock():
+            raise AuthenticationException(_INVALID_CREDENTIALS_MESSAGE)
+
+        return AuthenticatedUser(
+            id=principal_id,
+            username=username,
+            role=role,
+            principal_type=principal_type,
+            token_id=token_id,
+        )
+
+    async def revoke_token(self, token_id: str) -> None:
+        if token_id.strip() == "":
+            raise AuthenticationException(_INVALID_CREDENTIALS_MESSAGE)
+
+        if not await self._authentication_gateway.is_token_known(token_id):
+            raise AuthenticationException(_INVALID_CREDENTIALS_MESSAGE)
+
+        await self._authentication_gateway.revoke_token(token_id)

@@ -7,6 +7,8 @@ __all__ = [
     "verify_legacy_password",
 ]
 
+from dataclasses import replace
+
 from psycopg.rows import TupleRow
 
 from app.application.domain import PrincipalIdentity, TokenSession
@@ -66,3 +68,7 @@ class AuthenticationDataMapper(AuthenticationGateway):
 
     async def revoke_token(self, token_id: str) -> None:
         self._revoked_token_ids.add(token_id)
+        session: TokenSession | None = self._sessions.get(token_id)
+
+        if session is not None:
+            self._sessions[token_id] = replace(session, revoked=True)

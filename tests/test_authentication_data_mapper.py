@@ -76,6 +76,28 @@ async def test_authentication_data_mapper_stores_token_sessions_in_memory() -> N
 
 
 @pytest.mark.anyio
+async def test_authentication_data_mapper_marks_token_sessions_as_revoked() -> None:
+    mapper = AuthenticationDataMapper("postgresql://unused")
+    issued_at = datetime.now(timezone.utc)
+    session = TokenSession(
+        token_id="token-id",
+        principal_id=1,
+        principal_type=PrincipalType.USER,
+        issued_at=issued_at,
+        expires_at=issued_at + timedelta(days=30),
+    )
+
+    await mapper.register_token_session(session)
+    await mapper.revoke_token("token-id")
+
+    revoked_session = await mapper.get_token_session("token-id")
+
+    assert await mapper.is_token_revoked("token-id") is True
+    assert revoked_session is not None
+    assert revoked_session.revoked is True
+
+
+@pytest.mark.anyio
 async def test_authentication_data_mapper_authenticates_enabled_admin(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
