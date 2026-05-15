@@ -38,6 +38,28 @@ class AuthService:
         self._clock = clock
         self._token_id_factory = token_id_factory
 
+    async def login(
+        self,
+        username: str,
+        password: str,
+        principal_type: PrincipalType,
+    ) -> LoginResult:
+        if principal_type is PrincipalType.USER:
+            principal = await self._authentication_gateway.authenticate_internal_user(
+                username=username,
+                password=password,
+            )
+            return await self.issue_token(principal)
+
+        if principal_type is PrincipalType.CUSTOMER:
+            principal = await self._authentication_gateway.authenticate_customer(
+                username=username,
+                password=password,
+            )
+            return await self.issue_token(principal)
+
+        raise_invalid_credentials()
+
     async def issue_token(self, principal: PrincipalIdentity) -> LoginResult:
         token_id: str = self._token_id_factory()
         issued_at: datetime = self._clock()

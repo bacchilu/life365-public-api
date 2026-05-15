@@ -49,3 +49,7 @@ class LoginResponse(BaseModel):
             expires_at=result.session.expires_at,
             user=AuthenticatedUserResponse.from_authenticated_user(result.user),
         )
+
+
+class LogoutResponse(BaseModel):
+    status: str = "ok"

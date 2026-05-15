@@ -20,7 +20,7 @@ class AuthTokenValidator(Protocol):
     async def validate_token(self, token: str | None) -> AuthenticatedUser: ...
 
 
-def _auth_exception() -> HTTPException:
+def auth_exception() -> HTTPException:
     return HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail=_INVALID_CREDENTIALS_DETAIL,
@@ -38,7 +38,7 @@ def _jwt_secret_key() -> str:
     return secret_key
 
 
-def get_auth_service() -> AuthService:
+async def get_auth_service() -> AuthService:
     global _auth_service
 
     if _auth_service is None:
@@ -64,9 +64,9 @@ async def get_current_user(
     auth_service: Annotated[AuthTokenValidator, Depends(get_auth_service)],
 ) -> AuthenticatedUser:
     if credentials is None or credentials.scheme.lower() != "bearer":
-        raise _auth_exception()
+        raise auth_exception()
 
     try:
         return await auth_service.validate_token(credentials.credentials)
     except AuthenticationException as exc:
-        raise _auth_exception() from exc
+        raise auth_exception() from exc

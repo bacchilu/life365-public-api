@@ -1,0 +1,269 @@
+import os
+from collections.abc import Iterator
+from datetime import datetime, timedelta, timezone
+
+import httpx
+import pytest
+
+os.environ.setdefault("DATABASE_URL", "postgresql://localhost/test")
+os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key-with-at-least-32-bytes")
+
+from app.api.dependencies import get_auth_service
+from app.application.domain import (
+    AuthenticatedUser,
+    LoginResult,
+    PrincipalType,
+    Role,
+    TokenSession,
+)
+from app.application.exceptions import AuthenticationException
+from app.main import app
+
+
+class FakeAuthService:
+    def __init__(
+        self,
+        login_result: LoginResult | None = None,
+        login_exception: AuthenticationException | None = None,
+        validate_user: AuthenticatedUser | None = None,
+        validate_exception: AuthenticationException | None = None,
+        revoke_exception: AuthenticationException | None = None,
+    ) -> None:
+        self._login_result = login_result or _login_result(
+            username="admin",
+            role=Role.ADMIN,
+            principal_type=PrincipalType.USER,
+        )
+        self._login_exception = login_exception
+        self._validate_user = validate_user or AuthenticatedUser(
+            id=1,
+            username="admin",
+            role=Role.ADMIN,
+            principal_type=PrincipalType.USER,
+            token_id="token-id",
+        )
+        self._validate_exception = validate_exception
+        self._revoke_exception = revoke_exception
+        self.login_requests: list[tuple[str, str, PrincipalType]] = []
+        self.validated_tokens: list[str] = []
+        self.revoked_token_ids: list[str] = []
+
+    async def login(
+        self,
+        username: str,
+        password: str,
+        principal_type: PrincipalType,
+    ) -> LoginResult:
+        self.login_requests.append((username, password, principal_type))
+
+        if self._login_exception is not None:
+            raise self._login_exception
+
+        return self._login_result
+
+    async def validate_token(self, token: str | None) -> AuthenticatedUser:
+        self.validated_tokens.append(token or "")
+
+        if self._validate_exception is not None:
+            raise self._validate_exception
+
+        return self._validate_user
+
+    async def revoke_token(self, token_id: str) -> None:
+        self.revoked_token_ids.append(token_id)
+
+        if self._revoke_exception is not None:
+            raise self._revoke_exception
+
+
+@pytest.fixture(autouse=True)
+def dependency_overrides() -> Iterator[None]:
+    app.dependency_overrides.clear()
+    yield
+    app.dependency_overrides.clear()
+
+
+def _client() -> httpx.AsyncClient:
+    return httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://testserver",
+    )
+
+
+def _override_auth_service(fake_service: FakeAuthService) -> None:
+    async def override() -> FakeAuthService:
+        return fake_service
+
+    app.dependency_overrides[get_auth_service] = override
+
+
+def _login_result(
+    username: str,
+    role: Role,
+    principal_type: PrincipalType,
+) -> LoginResult:
+    issued_at = datetime.now(timezone.utc)
+    return LoginResult(
+        user=AuthenticatedUser(
+            id=1,
+            username=username,
+            role=role,
+            principal_type=principal_type,
+            token_id="token-id",
+        ),
+        session=TokenSession(
+            token_id="token-id",
+            principal_id=1,
+            principal_type=principal_type,
+            issued_at=issued_at,
+            expires_at=issued_at + timedelta(days=30),
+        ),
+        access_token="access-token",
+    )
+
+
+@pytest.mark.parametrize(
+    ("username", "principal_type", "role"),
+    [
+        ("admin", "user", Role.ADMIN),
+        ("buyer", "user", Role.BUYER),
+        ("customer-login", "customer", Role.CUSTOMER),
+    ],
+)
+@pytest.mark.anyio
+async def test_login_returns_bearer_token_for_valid_credentials(
+    username: str,
+    principal_type: str,
+    role: Role,
+) -> None:
+    fake_service = FakeAuthService(
+        login_result=_login_result(
+            username=username,
+            role=role,
+            principal_type=PrincipalType(principal_type),
+        )
+    )
+    _override_auth_service(fake_service)
+
+    async with _client() as client:
+        response = await client.post(
+            "/auth/login",
+            json={
+                "username": username,
+                "password": "submitted-password",
+                "principal_type": principal_type,
+            },
+        )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["access_token"] == "access-token"
+    assert data["token_type"] == "bearer"
+    assert data["user"] == {
+        "id": 1,
+        "username": username,
+        "role": role.value,
+        "principal_type": principal_type,
+    }
+    assert "password" not in data
+    assert "token_id" not in data["user"]
+    assert fake_service.login_requests == [
+        (
+            username,
+            "submitted-password",
+            PrincipalType(principal_type),
+        )
+    ]
+
+
+@pytest.mark.anyio
+async def test_login_returns_401_for_invalid_credentials() -> None:
+    fake_service = FakeAuthService(
+        login_exception=AuthenticationException("Invalid credentials")
+    )
+    _override_auth_service(fake_service)
+
+    async with _client() as client:
+        response = await client.post(
+            "/auth/login",
+            json={
+                "username": "admin",
+                "password": "wrong-password",
+                "principal_type": "user",
+            },
+        )
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Invalid credentials"}
+    assert fake_service.login_requests == [
+        ("admin", "wrong-password", PrincipalType.USER)
+    ]
+
+
+@pytest.mark.anyio
+async def test_logout_revokes_current_token() -> None:
+    fake_service = FakeAuthService()
+    _override_auth_service(fake_service)
+
+    async with _client() as client:
+        response = await client.post(
+            "/auth/logout",
+            headers={"Authorization": "Bearer access-token"},
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+    assert fake_service.validated_tokens == ["access-token"]
+    assert fake_service.revoked_token_ids == ["token-id"]
+
+
+@pytest.mark.anyio
+async def test_logout_returns_401_for_rejected_bearer_token() -> None:
+    fake_service = FakeAuthService(
+        validate_exception=AuthenticationException("Invalid credentials")
+    )
+    _override_auth_service(fake_service)
+
+    async with _client() as client:
+        response = await client.post(
+            "/auth/logout",
+            headers={"Authorization": "Bearer revoked-token"},
+        )
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Invalid credentials"}
+    assert fake_service.validated_tokens == ["revoked-token"]
+    assert fake_service.revoked_token_ids == []
+
+
+@pytest.mark.anyio
+async def test_logout_returns_401_when_revocation_fails() -> None:
+    fake_service = FakeAuthService(
+        revoke_exception=AuthenticationException("Invalid credentials")
+    )
+    _override_auth_service(fake_service)
+
+    async with _client() as client:
+        response = await client.post(
+            "/auth/logout",
+            headers={"Authorization": "Bearer access-token"},
+        )
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Invalid credentials"}
+    assert fake_service.validated_tokens == ["access-token"]
+    assert fake_service.revoked_token_ids == ["token-id"]
+
+
+@pytest.mark.anyio
+async def test_app_registers_auth_health_and_product_routes() -> None:
+    async with _client() as client:
+        response = await client.get("/openapi.json")
+
+    assert response.status_code == 200
+    paths = response.json()["paths"]
+    assert "/auth/login" in paths
+    assert "/auth/logout" in paths
+    assert "/health" in paths
+    assert "/products" in paths
+    assert "/products/{product_id}" in paths

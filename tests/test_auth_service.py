@@ -19,10 +19,13 @@ class FakeAuthenticationGateway(AuthenticationGateway):
     def __init__(self) -> None:
         self.sessions: dict[str, TokenSession] = {}
         self.revoked_token_ids: set[str] = set()
+        self.internal_authentication_requests: list[tuple[str, str]] = []
+        self.customer_authentication_requests: list[tuple[str, str]] = []
 
     async def authenticate_internal_user(
         self, username: str, password: str
     ) -> PrincipalIdentity:
+        self.internal_authentication_requests.append((username, password))
         return PrincipalIdentity(
             id=1,
             username=username,
@@ -33,6 +36,7 @@ class FakeAuthenticationGateway(AuthenticationGateway):
     async def authenticate_customer(
         self, username: str, password: str
     ) -> PrincipalIdentity:
+        self.customer_authentication_requests.append((username, password))
         return PrincipalIdentity(
             id=2,
             username=username,
@@ -104,6 +108,46 @@ def _valid_claims(
 
 def _encode_claims(claims: dict[str, object]) -> str:
     return PyJWTTokenCodec(_TEST_SECRET_KEY).encode(claims)
+
+
+@pytest.mark.anyio
+async def test_auth_service_login_authenticates_internal_user() -> None:
+    gateway = FakeAuthenticationGateway()
+    service = _auth_service(gateway)
+
+    result = await service.login(
+        username="admin",
+        password="submitted-password",
+        principal_type=PrincipalType.USER,
+    )
+
+    assert gateway.internal_authentication_requests == [("admin", "submitted-password")]
+    assert gateway.customer_authentication_requests == []
+    assert result.user.username == "admin"
+    assert result.user.role is Role.ADMIN
+    assert result.user.principal_type is PrincipalType.USER
+    assert result.session == gateway.sessions[result.user.token_id]
+
+
+@pytest.mark.anyio
+async def test_auth_service_login_authenticates_customer_and_issues_token() -> None:
+    gateway = FakeAuthenticationGateway()
+    service = _auth_service(gateway)
+
+    result = await service.login(
+        username="customer-login",
+        password="submitted-password",
+        principal_type=PrincipalType.CUSTOMER,
+    )
+
+    assert gateway.internal_authentication_requests == []
+    assert gateway.customer_authentication_requests == [
+        ("customer-login", "submitted-password")
+    ]
+    assert result.user.username == "customer-login"
+    assert result.user.role is Role.CUSTOMER
+    assert result.user.principal_type is PrincipalType.CUSTOMER
+    assert result.session == gateway.sessions[result.user.token_id]
 
 
 @pytest.mark.anyio
