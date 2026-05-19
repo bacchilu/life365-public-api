@@ -8,6 +8,7 @@ import pytest
 os.environ.setdefault("DATABASE_URL", "postgresql://localhost/test")
 os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key-with-at-least-32-bytes")
 
+import app.api.products.routes as products_routes
 from app.api.dependencies import get_auth_service
 from app.application.domain import (
     AuthenticatedUser,
@@ -17,6 +18,7 @@ from app.application.domain import (
     TokenSession,
 )
 from app.application.exceptions import AuthenticationException
+from app.application.services.products_service import ProductDTO
 from app.main import app
 
 
@@ -76,6 +78,26 @@ class FakeAuthService:
             raise self._revoke_exception
 
 
+class FakeProductsService:
+    def __init__(
+        self,
+        products: list[ProductDTO] | None = None,
+        product: ProductDTO | None = None,
+    ) -> None:
+        self._products = products or [_product_dto(product_id=1)]
+        self._product = product or _product_dto(product_id=1)
+        self.list_requests: list[tuple[int, int]] = []
+        self.get_requests: list[int] = []
+
+    async def get_products(self, limit: int = 100, offset: int = 0) -> list[ProductDTO]:
+        self.list_requests.append((limit, offset))
+        return self._products
+
+    async def get_product(self, product_id: int) -> ProductDTO:
+        self.get_requests.append(product_id)
+        return self._product
+
+
 @pytest.fixture(autouse=True)
 def dependency_overrides() -> Iterator[None]:
     app.dependency_overrides.clear()
@@ -95,6 +117,13 @@ def _override_auth_service(fake_service: FakeAuthService) -> None:
         return fake_service
 
     app.dependency_overrides[get_auth_service] = override
+
+
+def _override_products_service(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_service: FakeProductsService,
+) -> None:
+    monkeypatch.setattr(products_routes, "products_service", fake_service)
 
 
 def _login_result(
@@ -119,6 +148,18 @@ def _login_result(
             expires_at=issued_at + timedelta(days=30),
         ),
         access_token="access-token",
+    )
+
+
+def _product_dto(product_id: int) -> ProductDTO:
+    return ProductDTO(
+        id=product_id,
+        vendor_code=f"vendor-{product_id}",
+        isin=f"isin-{product_id}",
+        titles={"en": f"Product {product_id}"},
+        descriptions={"en": f"Description {product_id}"},
+        enabled=True,
+        barcodes=(f"barcode-{product_id}",),
     )
 
 
@@ -253,6 +294,122 @@ async def test_logout_returns_401_when_revocation_fails() -> None:
     assert response.json() == {"detail": "Invalid credentials"}
     assert fake_service.validated_tokens == ["access-token"]
     assert fake_service.revoked_token_ids == ["token-id"]
+
+
+@pytest.mark.anyio
+async def test_list_products_requires_valid_bearer_token_and_preserves_pagination(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_auth_service = FakeAuthService()
+    fake_products_service = FakeProductsService(products=[_product_dto(product_id=101)])
+    _override_auth_service(fake_auth_service)
+    _override_products_service(monkeypatch, fake_products_service)
+
+    async with _client() as client:
+        response = await client.get(
+            "/products?limit=2&offset=5",
+            headers={"Authorization": "Bearer access-token"},
+        )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data[0]["id"] == 101
+    assert data[0]["vendor_code"] == "vendor-101"
+    assert data[0]["barcodes"] == ["barcode-101"]
+    assert fake_auth_service.validated_tokens == ["access-token"]
+    assert fake_products_service.list_requests == [(2, 5)]
+    assert fake_products_service.get_requests == []
+
+
+@pytest.mark.anyio
+async def test_get_product_requires_valid_bearer_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_auth_service = FakeAuthService()
+    fake_products_service = FakeProductsService(product=_product_dto(product_id=42))
+    _override_auth_service(fake_auth_service)
+    _override_products_service(monkeypatch, fake_products_service)
+
+    async with _client() as client:
+        response = await client.get(
+            "/products/42",
+            headers={"Authorization": "Bearer access-token"},
+        )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["id"] == 42
+    assert data["vendor_code"] == "vendor-42"
+    assert data["barcodes"] == ["barcode-42"]
+    assert fake_auth_service.validated_tokens == ["access-token"]
+    assert fake_products_service.list_requests == []
+    assert fake_products_service.get_requests == [42]
+
+
+@pytest.mark.parametrize(
+    ("path", "headers"),
+    [
+        ("/products", {}),
+        ("/products/42", {}),
+        ("/products", {"Authorization": "Basic access-token"}),
+        ("/products/42", {"Authorization": "Basic access-token"}),
+    ],
+)
+@pytest.mark.anyio
+async def test_product_routes_return_401_without_valid_bearer_header(
+    path: str,
+    headers: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_auth_service = FakeAuthService()
+    fake_products_service = FakeProductsService()
+    _override_auth_service(fake_auth_service)
+    _override_products_service(monkeypatch, fake_products_service)
+
+    async with _client() as client:
+        response = await client.get(path, headers=headers)
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Invalid credentials"}
+    assert fake_auth_service.validated_tokens == []
+    assert fake_products_service.list_requests == []
+    assert fake_products_service.get_requests == []
+
+
+@pytest.mark.parametrize("path", ["/products", "/products/42"])
+@pytest.mark.parametrize(
+    "token",
+    [
+        "invalid-token",
+        "expired-token",
+        "unknown-token",
+        "revoked-token",
+    ],
+)
+@pytest.mark.anyio
+async def test_product_routes_return_401_for_rejected_bearer_tokens(
+    path: str,
+    token: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_auth_service = FakeAuthService(
+        validate_exception=AuthenticationException("Invalid credentials")
+    )
+    fake_products_service = FakeProductsService()
+    _override_auth_service(fake_auth_service)
+    _override_products_service(monkeypatch, fake_products_service)
+
+    async with _client() as client:
+        response = await client.get(
+            path,
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Invalid credentials"}
+    assert fake_auth_service.validated_tokens == [token]
+    assert fake_products_service.list_requests == []
+    assert fake_products_service.get_requests == []
 
 
 @pytest.mark.anyio

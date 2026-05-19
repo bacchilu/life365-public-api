@@ -1,9 +1,11 @@
 from datetime import datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Path, Query
+from fastapi import APIRouter, Depends, Path, Query
 from pydantic import BaseModel, Field
 
+from app.api.dependencies import get_current_user
+from app.application.domain import AuthenticatedUser
 from app.application.ports import ProductsGateway
 from app.application.services.products_service import ProductDTO, ProductsService
 from app.infrastructure.data_mapper import DATABASE_URL, ProductsDataMapper
@@ -58,6 +60,7 @@ class ProductResponse(BaseModel):
 
 @router.get("/products", summary="List products", response_model=list[ProductResponse])
 async def get_products(
+    current_user: Annotated[AuthenticatedUser, Depends(get_current_user)],
     limit: Annotated[int, Query(ge=1, le=1000)] = 100,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[ProductDTO]:
@@ -73,7 +76,10 @@ async def get_products(
     summary="Get product by ID",
     response_model=ProductResponse,
 )
-async def get_product(product_id: Annotated[int, Path(ge=1)]) -> ProductDTO:
+async def get_product(
+    product_id: Annotated[int, Path(ge=1)],
+    current_user: Annotated[AuthenticatedUser, Depends(get_current_user)],
+) -> ProductDTO:
     """
     Retrieve a single product by its unique ID.
     The `product_id` must be a positive integer.
