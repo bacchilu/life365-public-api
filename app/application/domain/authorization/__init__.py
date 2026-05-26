@@ -6,6 +6,7 @@ __all__ = [
     "NoProductsScope",
     "OwnerProductCreateScope",
     "OwnerProductsScope",
+    "AuthorizationService",
     "Permission",
     "ProductAccessPolicy",
     "ProductCreateScope",
@@ -26,6 +27,7 @@ from app.application.domain.authorization.policies import (
     ProductAccessPolicy,
     resolve_product_access_policy,
 )
+from app.application.domain.authorization.service import AuthorizationService
 from app.application.domain.authorization.scopes import (
     ActiveProductsScope,
     AllProductCreateScope,

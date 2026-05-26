@@ -1,4 +1,5 @@
 from dataclasses import FrozenInstanceError, is_dataclass
+from typing import cast
 
 import pytest
 
@@ -6,18 +7,22 @@ from app.application.domain import (
     ActiveProductsScope,
     AllProductCreateScope,
     AllProductsScope,
+    AuthorizationService,
     NoProductCreateScope,
     NoProductsScope,
     OwnerProductCreateScope,
     OwnerProductsScope,
     Permission,
     ProductAccessPolicy,
+    ProductCreateScope,
+    ProductScope,
     ROLE_PERMISSIONS,
     Role,
     SpecificProductsScope,
     resolve_permissions,
     resolve_product_access_policy,
 )
+from app.application.domain import Product
 from app.application.exceptions import AuthorizationException
 
 
@@ -236,3 +241,177 @@ def test_unsupported_role_product_access_policy_returns_no_access(
     assert isinstance(policy.read, NoProductsScope)
     assert isinstance(policy.update, NoProductsScope)
     assert isinstance(policy.delete, NoProductsScope)
+
+
+def test_authorization_service_allows_present_permission() -> None:
+    service = AuthorizationService()
+
+    service.require_permission(
+        permissions=frozenset({Permission.PRODUCTS_READ}),
+        permission=Permission.PRODUCTS_READ,
+    )
+
+
+def test_authorization_service_rejects_missing_permission() -> None:
+    service = AuthorizationService()
+
+    with pytest.raises(AuthorizationException, match="Missing required permission"):
+        service.require_permission(
+            permissions=frozenset({Permission.PRODUCTS_LIST}),
+            permission=Permission.PRODUCTS_READ,
+        )
+
+
+def test_authorization_service_matches_all_products_scope() -> None:
+    service = AuthorizationService()
+    product = _product()
+
+    assert service.matches_product_scope(product, AllProductsScope()) is True
+
+
+def test_authorization_service_matches_active_products_scope() -> None:
+    service = AuthorizationService()
+
+    assert (
+        service.matches_product_scope(_product(enabled=True), ActiveProductsScope())
+        is True
+    )
+    assert (
+        service.matches_product_scope(_product(enabled=False), ActiveProductsScope())
+        is False
+    )
+
+
+def test_authorization_service_matches_owner_products_scope() -> None:
+    service = AuthorizationService()
+    scope = OwnerProductsScope(owner_id=10)
+
+    assert service.matches_product_scope(_product(owner_id=10), scope) is True
+    assert service.matches_product_scope(_product(owner_id=20), scope) is False
+    assert service.matches_product_scope(_product(owner_id=None), scope) is False
+
+
+def test_authorization_service_matches_specific_products_scope() -> None:
+    service = AuthorizationService()
+    scope = SpecificProductsScope.from_ids([1, 2])
+
+    assert service.matches_product_scope(_product(id=1), scope) is True
+    assert service.matches_product_scope(_product(id=3), scope) is False
+
+
+def test_authorization_service_rejects_no_products_scope() -> None:
+    service = AuthorizationService()
+
+    assert service.matches_product_scope(_product(), NoProductsScope()) is False
+
+
+def test_authorization_service_fails_closed_for_unknown_product_scope() -> None:
+    service = AuthorizationService()
+
+    assert (
+        service.matches_product_scope(
+            _product(),
+            cast(ProductScope, object()),
+        )
+        is False
+    )
+
+
+def test_authorization_service_requires_product_access() -> None:
+    service = AuthorizationService()
+
+    service.require_product_access(
+        product=_product(owner_id=10),
+        scope=OwnerProductsScope(owner_id=10),
+    )
+
+
+def test_authorization_service_raises_for_denied_product_access() -> None:
+    service = AuthorizationService()
+
+    with pytest.raises(AuthorizationException, match="Product is outside allowed scope"):
+        service.require_product_access(
+            product=_product(owner_id=20),
+            scope=OwnerProductsScope(owner_id=10),
+        )
+
+
+def test_authorization_service_matches_all_product_create_scope() -> None:
+    service = AuthorizationService()
+
+    assert (
+        service.matches_product_create_scope(
+            owner_id=None,
+            scope=AllProductCreateScope(),
+        )
+        is True
+    )
+
+
+def test_authorization_service_matches_owner_product_create_scope() -> None:
+    service = AuthorizationService()
+    scope = OwnerProductCreateScope(owner_id=10)
+
+    assert service.matches_product_create_scope(owner_id=10, scope=scope) is True
+    assert service.matches_product_create_scope(owner_id=20, scope=scope) is False
+    assert service.matches_product_create_scope(owner_id=None, scope=scope) is False
+
+
+def test_authorization_service_rejects_no_product_create_scope() -> None:
+    service = AuthorizationService()
+
+    assert (
+        service.matches_product_create_scope(
+            owner_id=10,
+            scope=NoProductCreateScope(),
+        )
+        is False
+    )
+
+
+def test_authorization_service_fails_closed_for_unknown_create_scope() -> None:
+    service = AuthorizationService()
+
+    assert (
+        service.matches_product_create_scope(
+            owner_id=10,
+            scope=cast(ProductCreateScope, object()),
+        )
+        is False
+    )
+
+
+def test_authorization_service_requires_product_create_access() -> None:
+    service = AuthorizationService()
+
+    service.require_product_create_access(
+        owner_id=10,
+        scope=OwnerProductCreateScope(owner_id=10),
+    )
+
+
+def test_authorization_service_raises_for_denied_product_create_access() -> None:
+    service = AuthorizationService()
+
+    with pytest.raises(
+        AuthorizationException,
+        match="Product creation is outside allowed scope",
+    ):
+        service.require_product_create_access(
+            owner_id=None,
+            scope=OwnerProductCreateScope(owner_id=10),
+        )
+
+
+def _product(
+    id: int = 1,
+    enabled: bool = True,
+    owner_id: int | None = 10,
+) -> Product:
+    return Product(
+        id=id,
+        vendor_code="vendor",
+        isin="isin",
+        enabled=enabled,
+        owner_id=owner_id,
+    )
