@@ -12,7 +12,11 @@ from app.application.domain import (
     OwnerProductsScope,
     Permission,
     ProductAccessPolicy,
+    ROLE_PERMISSIONS,
+    Role,
     SpecificProductsScope,
+    resolve_permissions,
+    resolve_product_access_policy,
 )
 from app.application.exceptions import AuthorizationException
 
@@ -23,6 +27,10 @@ def test_permission_values_match_product_actions() -> None:
     assert Permission.PRODUCTS_READ.value == "products:read"
     assert Permission.PRODUCTS_UPDATE.value == "products:update"
     assert Permission.PRODUCTS_DELETE.value == "products:delete"
+
+
+def test_role_permissions_are_declared_for_supported_roles() -> None:
+    assert set(ROLE_PERMISSIONS) == {Role.ADMIN, Role.BUYER, Role.CUSTOMER}
 
 
 @pytest.mark.parametrize(
@@ -129,3 +137,102 @@ def test_authorization_exception_is_application_exception() -> None:
 
     assert isinstance(exception, Exception)
     assert str(exception) == "Forbidden"
+
+
+def test_admin_permission_resolution_returns_all_product_permissions() -> None:
+    assert resolve_permissions(Role.ADMIN) == frozenset(
+        {
+            Permission.PRODUCTS_CREATE,
+            Permission.PRODUCTS_LIST,
+            Permission.PRODUCTS_READ,
+            Permission.PRODUCTS_UPDATE,
+            Permission.PRODUCTS_DELETE,
+        }
+    )
+
+
+def test_buyer_permission_resolution_returns_all_product_permissions() -> None:
+    assert resolve_permissions(Role.BUYER) == frozenset(
+        {
+            Permission.PRODUCTS_CREATE,
+            Permission.PRODUCTS_LIST,
+            Permission.PRODUCTS_READ,
+            Permission.PRODUCTS_UPDATE,
+            Permission.PRODUCTS_DELETE,
+        }
+    )
+
+
+def test_customer_permission_resolution_returns_list_and_read_only() -> None:
+    assert resolve_permissions(Role.CUSTOMER) == frozenset(
+        {
+            Permission.PRODUCTS_LIST,
+            Permission.PRODUCTS_READ,
+        }
+    )
+
+
+@pytest.mark.parametrize("role", ["admin", object(), None])
+def test_unsupported_role_permission_resolution_returns_no_permissions(
+    role: object,
+) -> None:
+    assert resolve_permissions(role) == frozenset()
+
+
+def test_admin_product_access_policy_uses_all_scopes() -> None:
+    policy = resolve_product_access_policy(Role.ADMIN)
+
+    assert isinstance(policy.create, AllProductCreateScope)
+    assert isinstance(policy.list, AllProductsScope)
+    assert isinstance(policy.read, AllProductsScope)
+    assert isinstance(policy.update, AllProductsScope)
+    assert isinstance(policy.delete, AllProductsScope)
+
+
+def test_buyer_product_access_policy_uses_owner_mutation_scopes() -> None:
+    policy = resolve_product_access_policy(Role.BUYER, user_id=10)
+
+    assert isinstance(policy.create, OwnerProductCreateScope)
+    assert policy.create.owner_id == 10
+    assert isinstance(policy.list, AllProductsScope)
+    assert isinstance(policy.read, AllProductsScope)
+    assert isinstance(policy.update, OwnerProductsScope)
+    assert policy.update.owner_id == 10
+    assert isinstance(policy.delete, OwnerProductsScope)
+    assert policy.delete.owner_id == 10
+
+
+@pytest.mark.parametrize("user_id", [None, 0, -1, True])
+def test_buyer_product_access_policy_fails_closed_for_invalid_user_id(
+    user_id: int | None,
+) -> None:
+    policy = resolve_product_access_policy(Role.BUYER, user_id=user_id)
+
+    assert isinstance(policy.create, NoProductCreateScope)
+    assert isinstance(policy.list, NoProductsScope)
+    assert isinstance(policy.read, NoProductsScope)
+    assert isinstance(policy.update, NoProductsScope)
+    assert isinstance(policy.delete, NoProductsScope)
+
+
+def test_customer_product_access_policy_uses_read_only_product_access() -> None:
+    policy = resolve_product_access_policy(Role.CUSTOMER)
+
+    assert isinstance(policy.create, NoProductCreateScope)
+    assert isinstance(policy.list, AllProductsScope)
+    assert isinstance(policy.read, AllProductsScope)
+    assert isinstance(policy.update, NoProductsScope)
+    assert isinstance(policy.delete, NoProductsScope)
+
+
+@pytest.mark.parametrize("role", ["customer", object(), None])
+def test_unsupported_role_product_access_policy_returns_no_access(
+    role: object,
+) -> None:
+    policy = resolve_product_access_policy(role)
+
+    assert isinstance(policy.create, NoProductCreateScope)
+    assert isinstance(policy.list, NoProductsScope)
+    assert isinstance(policy.read, NoProductsScope)
+    assert isinstance(policy.update, NoProductsScope)
+    assert isinstance(policy.delete, NoProductsScope)

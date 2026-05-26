@@ -6,8 +6,6 @@ __all__ = [
     "NoProductsScope",
     "OwnerProductCreateScope",
     "OwnerProductsScope",
-    "Permission",
-    "ProductAccessPolicy",
     "ProductCreateScope",
     "ProductScope",
     "SpecificProductsScope",
@@ -16,16 +14,7 @@ __all__ = [
 
 from collections.abc import Iterable
 from dataclasses import dataclass
-from enum import StrEnum
 from typing import TypeAlias
-
-
-class Permission(StrEnum):
-    PRODUCTS_CREATE = "products:create"
-    PRODUCTS_LIST = "products:list"
-    PRODUCTS_READ = "products:read"
-    PRODUCTS_UPDATE = "products:update"
-    PRODUCTS_DELETE = "products:delete"
 
 
 def _validate_positive_int(value: int, field_name: str) -> None:
@@ -98,12 +87,3 @@ class NoProductCreateScope:
 ProductCreateScope: TypeAlias = (
     AllProductCreateScope | OwnerProductCreateScope | NoProductCreateScope
 )
-
-
-@dataclass(frozen=True, slots=True)
-class ProductAccessPolicy:
-    create: ProductCreateScope
-    list: ProductScope
-    read: ProductScope
-    update: ProductScope
-    delete: ProductScope

@@ -2,41 +2,31 @@ __all__ = [
     "ActiveProductsScope",
     "AllProductCreateScope",
     "AllProductsScope",
-    "AuthenticatedUser",
-    "LoginResult",
     "NoProductCreateScope",
     "NoProductsScope",
     "OwnerProductCreateScope",
     "OwnerProductsScope",
     "Permission",
-    "PrincipalIdentity",
-    "PrincipalType",
-    "Product",
     "ProductAccessPolicy",
     "ProductCreateScope",
     "ProductScope",
     "ROLE_PERMISSIONS",
-    "Role",
     "SpecificProductsScope",
-    "TokenSession",
-    "principal_id_to_subject",
     "resolve_permissions",
     "resolve_product_access_policy",
-    "subject_to_principal_id",
 ]
 
 
-from app.application.domain.auth import (
-    AuthenticatedUser,
-    LoginResult,
-    PrincipalIdentity,
-    PrincipalType,
-    Role,
-    TokenSession,
-    principal_id_to_subject,
-    subject_to_principal_id,
+from app.application.domain.authorization.permissions import (
+    ROLE_PERMISSIONS,
+    Permission,
+    resolve_permissions,
 )
-from app.application.domain.authorization import (
+from app.application.domain.authorization.policies import (
+    ProductAccessPolicy,
+    resolve_product_access_policy,
+)
+from app.application.domain.authorization.scopes import (
     ActiveProductsScope,
     AllProductCreateScope,
     AllProductsScope,
@@ -44,13 +34,7 @@ from app.application.domain.authorization import (
     NoProductsScope,
     OwnerProductCreateScope,
     OwnerProductsScope,
-    Permission,
-    ProductAccessPolicy,
     ProductCreateScope,
     ProductScope,
-    ROLE_PERMISSIONS,
     SpecificProductsScope,
-    resolve_permissions,
-    resolve_product_access_policy,
 )
-from app.application.domain.product import Product
