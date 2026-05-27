@@ -4,6 +4,7 @@ from typing import cast
 import pytest
 
 from app.application.domain import (
+    ROLE_PERMISSIONS,
     ActiveProductsScope,
     AllProductCreateScope,
     AllProductsScope,
@@ -13,16 +14,15 @@ from app.application.domain import (
     OwnerProductCreateScope,
     OwnerProductsScope,
     Permission,
+    Product,
     ProductAccessPolicy,
     ProductCreateScope,
     ProductScope,
-    ROLE_PERMISSIONS,
     Role,
     SpecificProductsScope,
     resolve_permissions,
     resolve_product_access_policy,
 )
-from app.application.domain import Product
 from app.application.exceptions import AuthorizationException
 
 
@@ -142,6 +142,12 @@ def test_authorization_exception_is_application_exception() -> None:
 
     assert isinstance(exception, Exception)
     assert str(exception) == "Forbidden"
+
+
+def test_authorization_service_is_importable_from_domain_package() -> None:
+    service = AuthorizationService()
+
+    assert isinstance(service, AuthorizationService)
 
 
 def test_admin_permission_resolution_returns_all_product_permissions() -> None:
@@ -329,11 +335,27 @@ def test_authorization_service_requires_product_access() -> None:
 def test_authorization_service_raises_for_denied_product_access() -> None:
     service = AuthorizationService()
 
-    with pytest.raises(AuthorizationException, match="Product is outside allowed scope"):
+    with pytest.raises(
+        AuthorizationException, match="Product is outside allowed scope"
+    ):
         service.require_product_access(
             product=_product(owner_id=20),
             scope=OwnerProductsScope(owner_id=10),
         )
+
+
+@pytest.mark.parametrize(
+    ("enabled", "scope"), [(False, ActiveProductsScope()), (True, NoProductsScope())]
+)
+def test_authorization_service_raises_for_denied_product_scope_variants(
+    enabled: bool, scope: ProductScope
+) -> None:
+    service = AuthorizationService()
+
+    with pytest.raises(
+        AuthorizationException, match="Product is outside allowed scope"
+    ):
+        service.require_product_access(product=_product(enabled=enabled), scope=scope)
 
 
 def test_authorization_service_matches_all_product_create_scope() -> None:
@@ -400,6 +422,19 @@ def test_authorization_service_raises_for_denied_product_create_access() -> None
         service.require_product_create_access(
             owner_id=None,
             scope=OwnerProductCreateScope(owner_id=10),
+        )
+
+
+def test_authorization_service_raises_for_no_product_create_scope() -> None:
+    service = AuthorizationService()
+
+    with pytest.raises(
+        AuthorizationException,
+        match="Product creation is outside allowed scope",
+    ):
+        service.require_product_create_access(
+            owner_id=10,
+            scope=NoProductCreateScope(),
         )
 
 
