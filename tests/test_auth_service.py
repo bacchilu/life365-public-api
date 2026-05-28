@@ -6,7 +6,20 @@ from itertools import count
 import jwt
 import pytest
 
-from app.application.domain import PrincipalIdentity, PrincipalType, Role, TokenSession
+from app.application.domain import (
+    AllProductCreateScope,
+    AllProductsScope,
+    NoProductCreateScope,
+    NoProductsScope,
+    OwnerProductCreateScope,
+    OwnerProductsScope,
+    Permission,
+    PrincipalIdentity,
+    PrincipalType,
+    ProductAccessPolicy,
+    Role,
+    TokenSession,
+)
 from app.application.exceptions import AuthenticationException
 from app.application.ports import AuthenticationGateway, TokenCodec
 from app.application.services.auth_service import TOKEN_EXPIRATION_DAYS, AuthService
@@ -126,6 +139,8 @@ async def test_auth_service_login_authenticates_internal_user() -> None:
     assert result.user.username == "admin"
     assert result.user.role is Role.ADMIN
     assert result.user.principal_type is PrincipalType.USER
+    assert result.user.permissions == _all_product_permissions()
+    _assert_all_product_policy(result.user.product_access)
     assert result.session == gateway.sessions[result.user.token_id]
 
 
@@ -147,6 +162,8 @@ async def test_auth_service_login_authenticates_customer_and_issues_token() -> N
     assert result.user.username == "customer-login"
     assert result.user.role is Role.CUSTOMER
     assert result.user.principal_type is PrincipalType.CUSTOMER
+    assert result.user.permissions == _customer_product_permissions()
+    _assert_customer_product_policy(result.user.product_access)
     assert result.session == gateway.sessions[result.user.token_id]
 
 
@@ -172,10 +189,13 @@ async def test_auth_service_issues_token_for_internal_user() -> None:
     assert claims["jti"] == "token-id"
     assert "iat" in claims
     assert "exp" in claims
+    _assert_no_authorization_claims(claims)
     assert result.user.id == 123
     assert result.user.role is Role.BUYER
     assert result.user.principal_type is PrincipalType.USER
     assert result.user.token_id == "token-id"
+    assert result.user.permissions == _all_product_permissions()
+    _assert_buyer_product_policy(result.user.product_access, owner_id=123)
     assert result.session == gateway.sessions["token-id"]
     assert result.session.expires_at > result.session.issued_at
     assert (result.session.expires_at - result.session.issued_at).days == (
@@ -201,9 +221,12 @@ async def test_auth_service_issues_token_for_customer() -> None:
     assert claims["username"] == "customer-login"
     assert claims["role"] == "customer"
     assert claims["principal_type"] == "customer"
+    _assert_no_authorization_claims(claims)
     assert result.user.id == 456
     assert result.user.role is Role.CUSTOMER
     assert result.user.principal_type is PrincipalType.CUSTOMER
+    assert result.user.permissions == _customer_product_permissions()
+    _assert_customer_product_policy(result.user.product_access)
     assert result.session.principal_type is PrincipalType.CUSTOMER
 
 
@@ -260,6 +283,8 @@ async def test_auth_service_validates_issued_token() -> None:
     user = await service.validate_token(result.access_token)
 
     assert user == result.user
+    assert user.permissions == _all_product_permissions()
+    _assert_buyer_product_policy(user.product_access, owner_id=123)
 
 
 @pytest.mark.anyio
@@ -361,3 +386,54 @@ async def test_auth_service_rejects_token_without_token_id() -> None:
         await service.validate_token(token)
 
     assert str(exc.value) == "Invalid credentials"
+
+
+def _all_product_permissions() -> frozenset[Permission]:
+    return frozenset(
+        {
+            Permission.PRODUCTS_CREATE,
+            Permission.PRODUCTS_LIST,
+            Permission.PRODUCTS_READ,
+            Permission.PRODUCTS_UPDATE,
+            Permission.PRODUCTS_DELETE,
+        }
+    )
+
+
+def _customer_product_permissions() -> frozenset[Permission]:
+    return frozenset({Permission.PRODUCTS_LIST, Permission.PRODUCTS_READ})
+
+
+def _assert_all_product_policy(policy: ProductAccessPolicy) -> None:
+    assert isinstance(policy.create, AllProductCreateScope)
+    assert isinstance(policy.list, AllProductsScope)
+    assert isinstance(policy.read, AllProductsScope)
+    assert isinstance(policy.update, AllProductsScope)
+    assert isinstance(policy.delete, AllProductsScope)
+
+
+def _assert_buyer_product_policy(
+    policy: ProductAccessPolicy,
+    owner_id: int,
+) -> None:
+    assert isinstance(policy.create, OwnerProductCreateScope)
+    assert policy.create.owner_id == owner_id
+    assert isinstance(policy.list, AllProductsScope)
+    assert isinstance(policy.read, AllProductsScope)
+    assert isinstance(policy.update, OwnerProductsScope)
+    assert policy.update.owner_id == owner_id
+    assert isinstance(policy.delete, OwnerProductsScope)
+    assert policy.delete.owner_id == owner_id
+
+
+def _assert_customer_product_policy(policy: ProductAccessPolicy) -> None:
+    assert isinstance(policy.create, NoProductCreateScope)
+    assert isinstance(policy.list, AllProductsScope)
+    assert isinstance(policy.read, AllProductsScope)
+    assert isinstance(policy.update, NoProductsScope)
+    assert isinstance(policy.delete, NoProductsScope)
+
+
+def _assert_no_authorization_claims(claims: dict[str, object]) -> None:
+    assert "permissions" not in claims
+    assert "product_access" not in claims
