@@ -3,7 +3,6 @@ __all__ = ["ProductAccessPolicy", "resolve_product_access_policy"]
 
 from dataclasses import dataclass
 
-from app.application.domain.auth import Role
 from app.application.domain.authorization.scopes import (
     AllProductCreateScope,
     AllProductsScope,
@@ -14,6 +13,7 @@ from app.application.domain.authorization.scopes import (
     ProductCreateScope,
     ProductScope,
 )
+from app.application.domain.identity import Role
 
 
 @dataclass(frozen=True, slots=True)

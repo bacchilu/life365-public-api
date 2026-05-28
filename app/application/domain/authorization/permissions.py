@@ -3,7 +3,7 @@ __all__ = ["Permission", "ROLE_PERMISSIONS", "resolve_permissions"]
 
 from enum import StrEnum
 
-from app.application.domain.auth import Role
+from app.application.domain.identity import Role
 
 
 class Permission(StrEnum):

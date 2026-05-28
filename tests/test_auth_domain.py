@@ -1,13 +1,18 @@
+from dataclasses import FrozenInstanceError
 from datetime import datetime, timedelta, timezone
 
 import pytest
 
 from app.application.domain import (
+    AllProductCreateScope,
+    AllProductsScope,
     AuthenticatedUser,
     LoginResult,
+    Permission,
     PrincipalIdentity,
     PrincipalType,
     Product,
+    ProductAccessPolicy,
     Role,
     TokenSession,
     principal_id_to_subject,
@@ -37,6 +42,8 @@ def test_auth_domain_objects_can_be_constructed() -> None:
         role=Role.BUYER,
         principal_type=PrincipalType.USER,
         token_id="token-id",
+        permissions=frozenset({Permission.PRODUCTS_LIST}),
+        product_access=_product_access_policy(),
     )
     session = TokenSession(
         token_id="token-id",
@@ -55,6 +62,8 @@ def test_auth_domain_objects_can_be_constructed() -> None:
     assert result.session == session
     assert result.access_token == "opaque-access-token"
     assert result.session.revoked is False
+    assert result.user.permissions == frozenset({Permission.PRODUCTS_LIST})
+    assert isinstance(result.user.product_access, ProductAccessPolicy)
 
 
 def test_login_result_repr_does_not_expose_access_token() -> None:
@@ -65,6 +74,8 @@ def test_login_result_repr_does_not_expose_access_token() -> None:
         role=Role.BUYER,
         principal_type=PrincipalType.USER,
         token_id="token-id",
+        permissions=frozenset({Permission.PRODUCTS_LIST}),
+        product_access=_product_access_policy(),
     )
     session = TokenSession(
         token_id="token-id",
@@ -80,6 +91,21 @@ def test_login_result_repr_does_not_expose_access_token() -> None:
     )
 
     assert "opaque-access-token" not in repr(result)
+
+
+def test_authenticated_user_is_immutable() -> None:
+    user = AuthenticatedUser(
+        id=123,
+        username="buyer",
+        role=Role.BUYER,
+        principal_type=PrincipalType.USER,
+        token_id="token-id",
+        permissions=frozenset({Permission.PRODUCTS_LIST}),
+        product_access=_product_access_policy(),
+    )
+
+    with pytest.raises(FrozenInstanceError):
+        setattr(user, "token_id", "other-token-id")
 
 
 def test_principal_identity_represents_token_free_identity() -> None:
@@ -149,3 +175,13 @@ def test_jwt_subject_converts_to_runtime_principal_id() -> None:
 def test_invalid_jwt_subjects_are_rejected(subject: str) -> None:
     with pytest.raises(AuthenticationException, match="Invalid credentials"):
         subject_to_principal_id(subject)
+
+
+def _product_access_policy() -> ProductAccessPolicy:
+    return ProductAccessPolicy(
+        create=AllProductCreateScope(),
+        list=AllProductsScope(),
+        read=AllProductsScope(),
+        update=AllProductsScope(),
+        delete=AllProductsScope(),
+    )

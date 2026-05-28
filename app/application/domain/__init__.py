@@ -30,29 +30,27 @@ __all__ = [
 from app.application.domain.auth import (
     AuthenticatedUser,
     LoginResult,
-    PrincipalIdentity,
-    PrincipalType,
-    Role,
     TokenSession,
     principal_id_to_subject,
     subject_to_principal_id,
 )
 from app.application.domain.authorization import (
+    ROLE_PERMISSIONS,
     ActiveProductsScope,
     AllProductCreateScope,
     AllProductsScope,
+    AuthorizationService,
     NoProductCreateScope,
     NoProductsScope,
     OwnerProductCreateScope,
     OwnerProductsScope,
-    AuthorizationService,
     Permission,
     ProductAccessPolicy,
     ProductCreateScope,
     ProductScope,
-    ROLE_PERMISSIONS,
     SpecificProductsScope,
     resolve_permissions,
     resolve_product_access_policy,
 )
+from app.application.domain.identity import PrincipalIdentity, PrincipalType, Role
 from app.application.domain.product import Product
