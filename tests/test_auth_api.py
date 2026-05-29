@@ -11,9 +11,13 @@ os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key-with-at-least-32-bytes"
 import app.api.products.routes as products_routes
 from app.api.dependencies import get_auth_service
 from app.application.domain import (
+    AllProductCreateScope,
+    AllProductsScope,
     AuthenticatedUser,
     LoginResult,
+    Permission,
     PrincipalType,
+    ProductAccessPolicy,
     Role,
     TokenSession,
 )
@@ -37,8 +41,8 @@ class FakeAuthService:
             principal_type=PrincipalType.USER,
         )
         self._login_exception = login_exception
-        self._validate_user = validate_user or AuthenticatedUser(
-            id=1,
+        self._validate_user = validate_user or _authenticated_user(
+            user_id=1,
             username="admin",
             role=Role.ADMIN,
             principal_type=PrincipalType.USER,
@@ -133,8 +137,8 @@ def _login_result(
 ) -> LoginResult:
     issued_at = datetime.now(timezone.utc)
     return LoginResult(
-        user=AuthenticatedUser(
-            id=1,
+        user=_authenticated_user(
+            user_id=1,
             username=username,
             role=role,
             principal_type=principal_type,
@@ -160,6 +164,34 @@ def _product_dto(product_id: int) -> ProductDTO:
         descriptions={"en": f"Description {product_id}"},
         enabled=True,
         barcodes=(f"barcode-{product_id}",),
+    )
+
+
+def _authenticated_user(
+    user_id: int,
+    username: str,
+    role: Role,
+    principal_type: PrincipalType,
+    token_id: str,
+) -> AuthenticatedUser:
+    return AuthenticatedUser(
+        id=user_id,
+        username=username,
+        role=role,
+        principal_type=principal_type,
+        token_id=token_id,
+        permissions=frozenset({Permission.PRODUCTS_LIST}),
+        product_access=_product_access_policy(),
+    )
+
+
+def _product_access_policy() -> ProductAccessPolicy:
+    return ProductAccessPolicy(
+        create=AllProductCreateScope(),
+        list=AllProductsScope(),
+        read=AllProductsScope(),
+        update=AllProductsScope(),
+        delete=AllProductsScope(),
     )
 
 
@@ -208,6 +240,8 @@ async def test_login_returns_bearer_token_for_valid_credentials(
     }
     assert "password" not in data
     assert "token_id" not in data["user"]
+    assert "permissions" not in data["user"]
+    assert "product_access" not in data["user"]
     assert fake_service.login_requests == [
         (
             username,

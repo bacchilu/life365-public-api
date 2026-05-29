@@ -8,9 +8,13 @@ from pydantic import ValidationError
 from app.api.auth import LoginRequest, LoginResponse
 from app.api.dependencies import get_current_user
 from app.application.domain import (
+    AllProductCreateScope,
+    AllProductsScope,
     AuthenticatedUser,
     LoginResult,
+    Permission,
     PrincipalType,
+    ProductAccessPolicy,
     Role,
     TokenSession,
 )
@@ -23,8 +27,8 @@ class FakeAuthService:
         user: AuthenticatedUser | None = None,
         exception: AuthenticationException | None = None,
     ) -> None:
-        self._user = user or AuthenticatedUser(
-            id=1,
+        self._user = user or _authenticated_user(
+            user_id=1,
             username="admin",
             role=Role.ADMIN,
             principal_type=PrincipalType.USER,
@@ -91,8 +95,8 @@ def test_login_request_rejects_invalid_principal_type() -> None:
 def test_login_response_exposes_token_output_without_private_fields() -> None:
     expires_at = datetime.now(timezone.utc) + timedelta(days=30)
     result = LoginResult(
-        user=AuthenticatedUser(
-            id=1,
+        user=_authenticated_user(
+            user_id=1,
             username="admin",
             role=Role.ADMIN,
             principal_type=PrincipalType.USER,
@@ -118,12 +122,14 @@ def test_login_response_exposes_token_output_without_private_fields() -> None:
     assert response.user.role is Role.ADMIN
     assert "password" not in response_data
     assert "token_id" not in response_data["user"]
+    assert "permissions" not in response_data["user"]
+    assert "product_access" not in response_data["user"]
 
 
 @pytest.mark.anyio
 async def test_get_current_user_returns_validated_user() -> None:
-    user = AuthenticatedUser(
-        id=2,
+    user = _authenticated_user(
+        user_id=2,
         username="buyer",
         role=Role.BUYER,
         principal_type=PrincipalType.USER,
@@ -135,6 +141,34 @@ async def test_get_current_user_returns_validated_user() -> None:
 
     assert result == user
     assert auth_service.validated_tokens == ["access-token"]
+
+
+def _authenticated_user(
+    user_id: int,
+    username: str,
+    role: Role,
+    principal_type: PrincipalType,
+    token_id: str,
+) -> AuthenticatedUser:
+    return AuthenticatedUser(
+        id=user_id,
+        username=username,
+        role=role,
+        principal_type=principal_type,
+        token_id=token_id,
+        permissions=frozenset({Permission.PRODUCTS_LIST}),
+        product_access=_product_access_policy(),
+    )
+
+
+def _product_access_policy() -> ProductAccessPolicy:
+    return ProductAccessPolicy(
+        create=AllProductCreateScope(),
+        list=AllProductsScope(),
+        read=AllProductsScope(),
+        update=AllProductsScope(),
+        delete=AllProductsScope(),
+    )
 
 
 @pytest.mark.anyio
