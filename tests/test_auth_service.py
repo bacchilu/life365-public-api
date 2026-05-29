@@ -288,6 +288,50 @@ async def test_auth_service_validates_issued_token() -> None:
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("principal_id", "username", "role", "principal_type"),
+    [
+        (101, "admin", Role.ADMIN, PrincipalType.USER),
+        (202, "buyer", Role.BUYER, PrincipalType.USER),
+        (303, "customer-login", Role.CUSTOMER, PrincipalType.CUSTOMER),
+    ],
+)
+async def test_auth_service_validates_issued_tokens_with_role_policies(
+    principal_id: int,
+    username: str,
+    role: Role,
+    principal_type: PrincipalType,
+) -> None:
+    gateway = FakeAuthenticationGateway()
+    service = _auth_service(gateway)
+    principal = PrincipalIdentity(
+        id=principal_id,
+        username=username,
+        role=role,
+        principal_type=principal_type,
+    )
+
+    result = await service.issue_token(principal)
+    user = await service.validate_token(result.access_token)
+
+    assert user == result.user
+
+    if role is Role.ADMIN:
+        assert user.permissions == _all_product_permissions()
+        _assert_all_product_policy(user.product_access)
+        return
+
+    if role is Role.BUYER:
+        assert user.permissions == _all_product_permissions()
+        _assert_buyer_product_policy(user.product_access, owner_id=principal_id)
+        return
+
+    assert role is Role.CUSTOMER
+    assert user.permissions == _customer_product_permissions()
+    _assert_customer_product_policy(user.product_access)
+
+
+@pytest.mark.anyio
 @pytest.mark.parametrize("token", [None, "", "   "])
 async def test_auth_service_rejects_missing_token(token: str | None) -> None:
     gateway = FakeAuthenticationGateway()
