@@ -1,12 +1,13 @@
 from datetime import datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Path, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from pydantic import BaseModel, Field
 
 from app.api.dependencies import get_current_user
 from app.application.domain import AuthenticatedUser
 from app.application.dtos import ProductDTO
+from app.application.exceptions import AuthorizationException
 from app.application.ports import ProductsGateway
 from app.application.services.products_service import ProductsService
 from app.infrastructure.data_mapper import DATABASE_URL, ProductsDataMapper
@@ -14,6 +15,13 @@ from app.infrastructure.data_mapper import DATABASE_URL, ProductsDataMapper
 router: APIRouter = APIRouter(tags=["products"])
 products_gateway: ProductsGateway = ProductsDataMapper(DATABASE_URL)
 products_service: ProductsService = ProductsService(products_gateway)
+
+
+def _authorization_exception(exc: AuthorizationException) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail=str(exc),
+    )
 
 
 class ProductResponse(BaseModel):
@@ -69,9 +77,12 @@ async def get_products(
     Retrieve a paginated list of products.
     Use `limit` to control the number of results and `offset` to skip results.
     """
-    return await products_service.get_products(
-        user=current_user, limit=limit, offset=offset
-    )
+    try:
+        return await products_service.get_products(
+            user=current_user, limit=limit, offset=offset
+        )
+    except AuthorizationException as exc:
+        raise _authorization_exception(exc) from exc
 
 
 @router.get(
@@ -87,4 +98,9 @@ async def get_product(
     Retrieve a single product by its unique ID.
     The `product_id` must be a positive integer.
     """
-    return await products_service.get_product(user=current_user, product_id=product_id)
+    try:
+        return await products_service.get_product(
+            user=current_user, product_id=product_id
+        )
+    except AuthorizationException as exc:
+        raise _authorization_exception(exc) from exc

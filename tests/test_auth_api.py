@@ -22,7 +22,7 @@ from app.application.domain import (
     TokenSession,
 )
 from app.application.dtos import ProductDTO
-from app.application.exceptions import AuthenticationException
+from app.application.exceptions import AuthenticationException, AuthorizationException
 from app.main import app
 
 
@@ -87,9 +87,13 @@ class FakeProductsService:
         self,
         products: list[ProductDTO] | None = None,
         product: ProductDTO | None = None,
+        list_exception: AuthorizationException | None = None,
+        get_exception: AuthorizationException | None = None,
     ) -> None:
         self._products = products or [_product_dto(product_id=1)]
         self._product = product or _product_dto(product_id=1)
+        self._list_exception = list_exception
+        self._get_exception = get_exception
         self.list_requests: list[tuple[int, int]] = []
         self.list_users: list[AuthenticatedUser] = []
         self.get_requests: list[int] = []
@@ -103,6 +107,10 @@ class FakeProductsService:
     ) -> list[ProductDTO]:
         self.list_users.append(user)
         self.list_requests.append((limit, offset))
+
+        if self._list_exception is not None:
+            raise self._list_exception
+
         return self._products
 
     async def get_product(
@@ -112,6 +120,10 @@ class FakeProductsService:
     ) -> ProductDTO:
         self.get_users.append(user)
         self.get_requests.append(product_id)
+
+        if self._get_exception is not None:
+            raise self._get_exception
+
         return self._product
 
 
@@ -389,6 +401,60 @@ async def test_get_product_requires_valid_bearer_token(
     assert data["id"] == 42
     assert data["vendor_code"] == "vendor-42"
     assert data["barcodes"] == ["barcode-42"]
+    assert fake_auth_service.validated_tokens == ["access-token"]
+    assert fake_products_service.list_requests == []
+    assert fake_products_service.get_users == [fake_auth_service._validate_user]
+    assert fake_products_service.get_requests == [42]
+
+
+@pytest.mark.anyio
+async def test_list_products_returns_403_for_authorization_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_auth_service = FakeAuthService()
+    fake_products_service = FakeProductsService(
+        list_exception=AuthorizationException(
+            "Missing required permission: products:list"
+        )
+    )
+    _override_auth_service(fake_auth_service)
+    _override_products_service(monkeypatch, fake_products_service)
+
+    async with _client() as client:
+        response = await client.get(
+            "/products?limit=2&offset=5",
+            headers={"Authorization": "Bearer access-token"},
+        )
+
+    assert response.status_code == 403
+    assert response.json() == {
+        "detail": "Missing required permission: products:list"
+    }
+    assert fake_auth_service.validated_tokens == ["access-token"]
+    assert fake_products_service.list_users == [fake_auth_service._validate_user]
+    assert fake_products_service.list_requests == [(2, 5)]
+    assert fake_products_service.get_requests == []
+
+
+@pytest.mark.anyio
+async def test_get_product_returns_403_for_authorization_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_auth_service = FakeAuthService()
+    fake_products_service = FakeProductsService(
+        get_exception=AuthorizationException("Product is outside allowed scope")
+    )
+    _override_auth_service(fake_auth_service)
+    _override_products_service(monkeypatch, fake_products_service)
+
+    async with _client() as client:
+        response = await client.get(
+            "/products/42",
+            headers={"Authorization": "Bearer access-token"},
+        )
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": "Product is outside allowed scope"}
     assert fake_auth_service.validated_tokens == ["access-token"]
     assert fake_products_service.list_requests == []
     assert fake_products_service.get_users == [fake_auth_service._validate_user]
