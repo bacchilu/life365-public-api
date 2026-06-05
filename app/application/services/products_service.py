@@ -1,91 +1,57 @@
-from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Any
-
-from app.application.domain import Product
-from app.application.exceptions import DBException
+from app.application.domain import (
+    AuthenticatedUser,
+    AuthorizationService,
+    Permission,
+    Product,
+)
+from app.application.dtos import ProductDTO, product_to_dto
+from app.application.exceptions import AuthorizationException, DBException
 from app.application.ports import ProductsGateway
 
 
-@dataclass(slots=True)
-class ProductDTO:
-    id: int
-    vendor_code: str
-    isin: str
-    titles: dict[str, str] = field(default_factory=dict)
-    descriptions: dict[str, str] = field(default_factory=dict)
-    brand_id: int | None = None
-    owner_id: int | None = None
-    level_1: int | None = None
-    level_2: int | None = None
-    level_3: int | None = None
-    enabled: bool = False
-    featured: bool = False
-    qty_box: int = 1
-    weight_gr: int = 0
-    dim_length_mm: int | None = None
-    dim_width_mm: int | None = None
-    dim_height_mm: int | None = None
-    color: str | None = None
-    certificate: str | None = None
-    type1: str | None = None
-    type2: str | None = None
-    barcodes: tuple[str, ...] = ()
-    extra_specs: dict[str, Any] = field(default_factory=dict)
-    keywords: dict[str, Any] = field(default_factory=dict)
-    excluded_countries: tuple[int, ...] = ()
-    creation_date: datetime | None = None
-    last_update: int = 0
-
-
-def _product_to_dto(product: Product) -> ProductDTO:
-    return ProductDTO(
-        id=product.id,
-        vendor_code=product.vendor_code,
-        isin=product.isin,
-        titles=product.titles,
-        descriptions=product.descriptions,
-        brand_id=product.brand_id,
-        owner_id=product.owner_id,
-        level_1=product.level_1,
-        level_2=product.level_2,
-        level_3=product.level_3,
-        enabled=product.enabled,
-        featured=product.featured,
-        qty_box=product.qty_box,
-        weight_gr=product.weight_gr,
-        dim_length_mm=product.dim_length_mm,
-        dim_width_mm=product.dim_width_mm,
-        dim_height_mm=product.dim_height_mm,
-        color=product.color,
-        certificate=product.certificate,
-        type1=product.type1,
-        type2=product.type2,
-        barcodes=product.barcodes,
-        extra_specs=product.extra_specs,
-        keywords=product.keywords,
-        excluded_countries=product.excluded_countries,
-        creation_date=product.creation_date,
-        last_update=product.last_update,
-    )
-
-
 class ProductsService:
-    def __init__(self, data_mapper: ProductsGateway) -> None:
+    def __init__(
+        self,
+        data_mapper: ProductsGateway,
+        authorization: AuthorizationService | None = None,
+    ) -> None:
         self._data_mapper = data_mapper
+        self._authorization = authorization or AuthorizationService()
 
-    async def get_products(self, limit: int = 100, offset: int = 0) -> list[ProductDTO]:
+    async def get_products(
+        self, user: AuthenticatedUser, limit: int = 100, offset: int = 0
+    ) -> list[ProductDTO]:
         try:
+            self._authorization.require_permission(
+                user.permissions, Permission.PRODUCTS_LIST
+            )
             products: list[Product] = await self._data_mapper.get_products(
                 limit=limit, offset=offset
             )
-            return [_product_to_dto(product) for product in products]
+            allowed_products: list[Product] = [
+                product
+                for product in products
+                if self._authorization.matches_product_scope(
+                    product=product, scope=user.product_access.list
+                )
+            ]
+            return [product_to_dto(product) for product in allowed_products]
+        except AuthorizationException:
+            raise
         except Exception as e:
             raise DBException("Products lookup failed") from e
 
-    async def get_product(self, product_id: int) -> ProductDTO:
+    async def get_product(self, user: AuthenticatedUser, product_id: int) -> ProductDTO:
         try:
+            self._authorization.require_permission(
+                user.permissions, Permission.PRODUCTS_READ
+            )
             product: Product = await self._data_mapper.get_product(product_id)
-            return _product_to_dto(product)
+            self._authorization.require_product_access(
+                product=product, scope=user.product_access.read
+            )
+            return product_to_dto(product)
+        except AuthorizationException:
+            raise
         except Exception as e:
             raise DBException("Product lookup failed") from e

@@ -6,8 +6,9 @@ from pydantic import BaseModel, Field
 
 from app.api.dependencies import get_current_user
 from app.application.domain import AuthenticatedUser
+from app.application.dtos import ProductDTO
 from app.application.ports import ProductsGateway
-from app.application.services.products_service import ProductDTO, ProductsService
+from app.application.services.products_service import ProductsService
 from app.infrastructure.data_mapper import DATABASE_URL, ProductsDataMapper
 
 router: APIRouter = APIRouter(tags=["products"])
@@ -68,7 +69,9 @@ async def get_products(
     Retrieve a paginated list of products.
     Use `limit` to control the number of results and `offset` to skip results.
     """
-    return await products_service.get_products(limit=limit, offset=offset)
+    return await products_service.get_products(
+        user=current_user, limit=limit, offset=offset
+    )
 
 
 @router.get(
@@ -84,4 +87,4 @@ async def get_product(
     Retrieve a single product by its unique ID.
     The `product_id` must be a positive integer.
     """
-    return await products_service.get_product(product_id)
+    return await products_service.get_product(user=current_user, product_id=product_id)

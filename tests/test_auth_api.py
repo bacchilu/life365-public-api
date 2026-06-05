@@ -21,8 +21,8 @@ from app.application.domain import (
     Role,
     TokenSession,
 )
+from app.application.dtos import ProductDTO
 from app.application.exceptions import AuthenticationException
-from app.application.services.products_service import ProductDTO
 from app.main import app
 
 
@@ -91,13 +91,26 @@ class FakeProductsService:
         self._products = products or [_product_dto(product_id=1)]
         self._product = product or _product_dto(product_id=1)
         self.list_requests: list[tuple[int, int]] = []
+        self.list_users: list[AuthenticatedUser] = []
         self.get_requests: list[int] = []
+        self.get_users: list[AuthenticatedUser] = []
 
-    async def get_products(self, limit: int = 100, offset: int = 0) -> list[ProductDTO]:
+    async def get_products(
+        self,
+        user: AuthenticatedUser,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[ProductDTO]:
+        self.list_users.append(user)
         self.list_requests.append((limit, offset))
         return self._products
 
-    async def get_product(self, product_id: int) -> ProductDTO:
+    async def get_product(
+        self,
+        user: AuthenticatedUser,
+        product_id: int,
+    ) -> ProductDTO:
+        self.get_users.append(user)
         self.get_requests.append(product_id)
         return self._product
 
@@ -351,6 +364,7 @@ async def test_list_products_requires_valid_bearer_token_and_preserves_paginatio
     assert data[0]["vendor_code"] == "vendor-101"
     assert data[0]["barcodes"] == ["barcode-101"]
     assert fake_auth_service.validated_tokens == ["access-token"]
+    assert fake_products_service.list_users == [fake_auth_service._validate_user]
     assert fake_products_service.list_requests == [(2, 5)]
     assert fake_products_service.get_requests == []
 
@@ -377,6 +391,7 @@ async def test_get_product_requires_valid_bearer_token(
     assert data["barcodes"] == ["barcode-42"]
     assert fake_auth_service.validated_tokens == ["access-token"]
     assert fake_products_service.list_requests == []
+    assert fake_products_service.get_users == [fake_auth_service._validate_user]
     assert fake_products_service.get_requests == [42]
 
 
