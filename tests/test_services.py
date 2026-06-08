@@ -110,6 +110,73 @@ def _product_access_policy(
     )
 
 
+@pytest.mark.parametrize(
+    ("role", "principal_type"),
+    [
+        (Role.ADMIN, PrincipalType.USER),
+        (Role.BUYER, PrincipalType.USER),
+        (Role.CUSTOMER, PrincipalType.CUSTOMER),
+    ],
+)
+@pytest.mark.anyio
+async def test_products_service_get_products_allows_read_roles(
+    role: Role,
+    principal_type: PrincipalType,
+) -> None:
+    gateway = FakeProductsGateway(
+        products=[
+            Product(id=1, vendor_code="first", isin="first-isin", enabled=True),
+            Product(id=2, vendor_code="second", isin="second-isin", enabled=True),
+        ]
+    )
+    service = ProductsService(gateway)
+    user = _authenticated_user(
+        role=role,
+        principal_type=principal_type,
+    )
+
+    products = await service.get_products(user=user, limit=25, offset=5)
+
+    assert [product.id for product in products] == [1, 2]
+    assert [product.vendor_code for product in products] == ["first", "second"]
+    assert gateway.products_requests == [(25, 5)]
+
+
+@pytest.mark.parametrize(
+    ("role", "principal_type"),
+    [
+        (Role.ADMIN, PrincipalType.USER),
+        (Role.BUYER, PrincipalType.USER),
+        (Role.CUSTOMER, PrincipalType.CUSTOMER),
+    ],
+)
+@pytest.mark.anyio
+async def test_products_service_get_product_allows_read_roles(
+    role: Role,
+    principal_type: PrincipalType,
+) -> None:
+    gateway = FakeProductsGateway(
+        product=Product(
+            id=7,
+            vendor_code="single",
+            isin="single-isin",
+            enabled=True,
+        )
+    )
+    service = ProductsService(gateway)
+    user = _authenticated_user(
+        role=role,
+        principal_type=principal_type,
+    )
+
+    product = await service.get_product(user=user, product_id=7)
+
+    assert product.id == 7
+    assert product.vendor_code == "single"
+    assert product.isin == "single-isin"
+    assert gateway.product_requests == [7]
+
+
 @pytest.mark.anyio
 async def test_health_service_uses_check_gateway() -> None:
     gateway: CheckGateway = FakeCheckGateway()
@@ -194,6 +261,26 @@ async def test_products_service_get_products_applies_list_scope() -> None:
     products = await service.get_products(user=user, limit=50, offset=25)
 
     assert [product.id for product in products] == [1]
+    assert gateway.products_requests == [(50, 25)]
+
+
+@pytest.mark.anyio
+async def test_products_service_get_products_denied_scope_returns_empty_list() -> None:
+    gateway = FakeProductsGateway(
+        products=[
+            Product(id=1, vendor_code="first", isin="first-isin", enabled=True),
+            Product(id=2, vendor_code="second", isin="second-isin", enabled=True),
+        ]
+    )
+    service = ProductsService(gateway)
+    user = _authenticated_user(
+        permissions=frozenset({Permission.PRODUCTS_LIST}),
+        product_access=_product_access_policy(list_scope=NoProductsScope()),
+    )
+
+    products = await service.get_products(user=user, limit=50, offset=25)
+
+    assert products == []
     assert gateway.products_requests == [(50, 25)]
 
 

@@ -220,6 +220,38 @@ def _product_access_policy() -> ProductAccessPolicy:
     )
 
 
+def _assert_product_response_shape(data: dict[str, object]) -> None:
+    assert set(data) == {
+        "id",
+        "vendor_code",
+        "isin",
+        "titles",
+        "descriptions",
+        "brand_id",
+        "owner_id",
+        "level_1",
+        "level_2",
+        "level_3",
+        "enabled",
+        "featured",
+        "qty_box",
+        "weight_gr",
+        "dim_length_mm",
+        "dim_width_mm",
+        "dim_height_mm",
+        "color",
+        "certificate",
+        "type1",
+        "type2",
+        "barcodes",
+        "extra_specs",
+        "keywords",
+        "excluded_countries",
+        "creation_date",
+        "last_update",
+    }
+
+
 @pytest.mark.parametrize(
     ("username", "principal_type", "role"),
     [
@@ -372,6 +404,7 @@ async def test_list_products_requires_valid_bearer_token_and_preserves_paginatio
 
     assert response.status_code == 200
     data = response.json()
+    _assert_product_response_shape(data[0])
     assert data[0]["id"] == 101
     assert data[0]["vendor_code"] == "vendor-101"
     assert data[0]["barcodes"] == ["barcode-101"]
@@ -398,6 +431,7 @@ async def test_get_product_requires_valid_bearer_token(
 
     assert response.status_code == 200
     data = response.json()
+    _assert_product_response_shape(data)
     assert data["id"] == 42
     assert data["vendor_code"] == "vendor-42"
     assert data["barcodes"] == ["barcode-42"]
