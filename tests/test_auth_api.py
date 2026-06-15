@@ -387,11 +387,30 @@ async def test_logout_returns_401_when_revocation_fails() -> None:
     assert fake_service.revoked_token_ids == ["token-id"]
 
 
+@pytest.mark.parametrize(
+    ("user_id", "username", "role", "principal_type"),
+    [
+        (1, "admin", Role.ADMIN, PrincipalType.USER),
+        (2, "buyer", Role.BUYER, PrincipalType.USER),
+        (3, "customer-login", Role.CUSTOMER, PrincipalType.CUSTOMER),
+    ],
+)
 @pytest.mark.anyio
 async def test_list_products_requires_valid_bearer_token_and_preserves_pagination(
+    user_id: int,
+    username: str,
+    role: Role,
+    principal_type: PrincipalType,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    fake_auth_service = FakeAuthService()
+    authenticated_user = _authenticated_user(
+        user_id=user_id,
+        username=username,
+        role=role,
+        principal_type=principal_type,
+        token_id=f"{role.value}-token-id",
+    )
+    fake_auth_service = FakeAuthService(validate_user=authenticated_user)
     fake_products_service = FakeProductsService(products=[_product_dto(product_id=101)])
     _override_auth_service(fake_auth_service)
     _override_products_service(monkeypatch, fake_products_service)
@@ -409,16 +428,35 @@ async def test_list_products_requires_valid_bearer_token_and_preserves_paginatio
     assert data[0]["vendor_code"] == "vendor-101"
     assert data[0]["barcodes"] == ["barcode-101"]
     assert fake_auth_service.validated_tokens == ["access-token"]
-    assert fake_products_service.list_users == [fake_auth_service._validate_user]
+    assert fake_products_service.list_users == [authenticated_user]
     assert fake_products_service.list_requests == [(2, 5)]
     assert fake_products_service.get_requests == []
 
 
+@pytest.mark.parametrize(
+    ("user_id", "username", "role", "principal_type"),
+    [
+        (1, "admin", Role.ADMIN, PrincipalType.USER),
+        (2, "buyer", Role.BUYER, PrincipalType.USER),
+        (3, "customer-login", Role.CUSTOMER, PrincipalType.CUSTOMER),
+    ],
+)
 @pytest.mark.anyio
 async def test_get_product_requires_valid_bearer_token(
+    user_id: int,
+    username: str,
+    role: Role,
+    principal_type: PrincipalType,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    fake_auth_service = FakeAuthService()
+    authenticated_user = _authenticated_user(
+        user_id=user_id,
+        username=username,
+        role=role,
+        principal_type=principal_type,
+        token_id=f"{role.value}-token-id",
+    )
+    fake_auth_service = FakeAuthService(validate_user=authenticated_user)
     fake_products_service = FakeProductsService(product=_product_dto(product_id=42))
     _override_auth_service(fake_auth_service)
     _override_products_service(monkeypatch, fake_products_service)
@@ -437,7 +475,7 @@ async def test_get_product_requires_valid_bearer_token(
     assert data["barcodes"] == ["barcode-42"]
     assert fake_auth_service.validated_tokens == ["access-token"]
     assert fake_products_service.list_requests == []
-    assert fake_products_service.get_users == [fake_auth_service._validate_user]
+    assert fake_products_service.get_users == [authenticated_user]
     assert fake_products_service.get_requests == [42]
 
 
@@ -461,9 +499,7 @@ async def test_list_products_returns_403_for_authorization_failure(
         )
 
     assert response.status_code == 403
-    assert response.json() == {
-        "detail": "Missing required permission: products:list"
-    }
+    assert response.json() == {"detail": "Missing required permission: products:list"}
     assert fake_auth_service.validated_tokens == ["access-token"]
     assert fake_products_service.list_users == [fake_auth_service._validate_user]
     assert fake_products_service.list_requests == [(2, 5)]
