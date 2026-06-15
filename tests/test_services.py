@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 import pytest
 
 from app.application.domain import (
@@ -217,6 +219,75 @@ async def test_products_service_get_product_uses_products_gateway() -> None:
     assert product.vendor_code == "single"
     assert product.isin == "single-isin"
     assert product.enabled is True
+    assert gateway.product_requests == [7]
+
+
+@pytest.mark.anyio
+async def test_products_service_get_product_preserves_product_dto_fields() -> None:
+    creation_date = datetime(2026, 1, 2, 3, 4, 5, tzinfo=timezone.utc)
+    gateway = FakeProductsGateway(
+        product=Product(
+            id=7,
+            vendor_code="single",
+            isin="single-isin",
+            titles={"en": "Title"},
+            descriptions={"en": "Description"},
+            brand_id=3,
+            owner_id=11,
+            level_1=100,
+            level_2=200,
+            level_3=300,
+            enabled=True,
+            featured=True,
+            qty_box=6,
+            weight_gr=500,
+            dim_length_mm=10,
+            dim_width_mm=20,
+            dim_height_mm=30,
+            color="red",
+            certificate="cert",
+            type1="type-one",
+            type2="type-two",
+            barcodes=("123", "456"),
+            extra_specs={"material": "steel"},
+            keywords={"en": ["keyword"]},
+            excluded_countries=(1, 2),
+            creation_date=creation_date,
+            last_update=123456,
+        )
+    )
+    service = ProductsService(gateway)
+    user = _authenticated_user()
+
+    product = await service.get_product(user=user, product_id=7)
+
+    assert product.id == 7
+    assert product.vendor_code == "single"
+    assert product.isin == "single-isin"
+    assert product.titles == {"en": "Title"}
+    assert product.descriptions == {"en": "Description"}
+    assert product.brand_id == 3
+    assert product.owner_id == 11
+    assert product.level_1 == 100
+    assert product.level_2 == 200
+    assert product.level_3 == 300
+    assert product.enabled is True
+    assert product.featured is True
+    assert product.qty_box == 6
+    assert product.weight_gr == 500
+    assert product.dim_length_mm == 10
+    assert product.dim_width_mm == 20
+    assert product.dim_height_mm == 30
+    assert product.color == "red"
+    assert product.certificate == "cert"
+    assert product.type1 == "type-one"
+    assert product.type2 == "type-two"
+    assert product.barcodes == ("123", "456")
+    assert product.extra_specs == {"material": "steel"}
+    assert product.keywords == {"en": ["keyword"]}
+    assert product.excluded_countries == (1, 2)
+    assert product.creation_date == creation_date
+    assert product.last_update == 123456
     assert gateway.product_requests == [7]
 
 
