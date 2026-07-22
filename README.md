@@ -36,3 +36,55 @@ Expected response:
 ```json
 {"status": "ok", "db": "ok"}
 ```
+
+## Docker
+
+Build the image with a container user matching the current host user:
+
+```bash
+docker build --build-arg USER_ID="$(id -u)" --build-arg GROUP_ID="$(id -g)" -t life365-public-api:latest .
+```
+
+Run the source bundled in the image in production mode:
+
+```bash
+docker run --rm -it --env-file .env -p 8000:8000 life365-public-api
+```
+
+Run in development mode with automatic reload and the repository bind-mounted
+at `/app`:
+
+```bash
+docker run --rm -it --env-file .env -p 8000:8000 -v "$(pwd):/app" life365-public-api fastapi dev app/main.py --host 0.0.0.0 --port 8000
+```
+
+The same modes are available through Docker Compose. Start development mode
+with:
+
+```bash
+USER_ID="$(id -u)" GROUP_ID="$(id -g)" docker compose --profile dev up
+```
+
+Start production mode in the background with:
+
+```bash
+USER_ID="$(id -u)" GROUP_ID="$(id -g)" docker compose --profile prod up -d
+```
+
+Stop and remove the production containers with:
+
+```bash
+docker compose --profile prod down
+```
+
+The production command intentionally uses one worker while authentication
+sessions are held in process-local memory. Configure a shared durable session
+store before scaling to multiple workers or containers.
+
+If PostgreSQL runs directly on the Docker host, use
+`host.docker.internal` instead of `localhost` in `DATABASE_URL` and add this
+option to `docker run` on Linux:
+
+```text
+--add-host host.docker.internal:host-gateway
+```

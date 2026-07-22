@@ -1,4 +1,9 @@
-.PHONY: update build clean run codex clean-all
+.PHONY: update build clean run codex clean-all \
+	docker-dev-up docker-dev-down docker-prod-up docker-prod-down
+
+HOST_USER_ID := $(shell id -u)
+HOST_GROUP_ID := $(shell id -g)
+DOCKER_COMPOSE := USER_ID=$(HOST_USER_ID) GROUP_ID=$(HOST_GROUP_ID) docker compose
 
 # ensure-networks:
 # 	docker network inspect public >/dev/null 2>&1 || docker network create public
@@ -17,6 +22,18 @@ build:
 
 run:
 	./.venv/bin/fastapi dev app/main.py
+
+docker-dev-up:
+	$(DOCKER_COMPOSE) --profile dev run --rm --service-ports --build api-dev
+
+docker-dev-down:
+	$(DOCKER_COMPOSE) --profile dev down
+
+docker-prod-up:
+	$(DOCKER_COMPOSE) --profile prod up --build --detach
+
+docker-prod-down:
+	$(DOCKER_COMPOSE) --profile prod down
 
 clean:
 	find . -name "*.pyc" -delete

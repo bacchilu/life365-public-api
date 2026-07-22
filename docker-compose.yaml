@@ -1,0 +1,35 @@
+x-api: &api
+  build:
+    context: .
+    dockerfile: Dockerfile
+    args:
+      USER_ID: "${USER_ID:-1000}"
+      GROUP_ID: "${GROUP_ID:-1000}"
+  image: life365-public-api:latest
+  env_file:
+    - .env
+  ports:
+    - "8000:8000"
+  init: true
+
+services:
+  api-dev:
+    <<: *api
+    profiles:
+      - dev
+    volumes:
+      - .:/app
+    command:
+      - fastapi
+      - dev
+      - app/main.py
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+
+  api:
+    <<: *api
+    profiles:
+      - prod
+    restart: unless-stopped
