@@ -62,20 +62,25 @@ The same modes are available through Docker Compose. Start development mode
 with:
 
 ```bash
-USER_ID="$(id -u)" GROUP_ID="$(id -g)" docker compose --profile dev up
+make docker-dev-up
 ```
 
 Start production mode in the background with:
 
 ```bash
-USER_ID="$(id -u)" GROUP_ID="$(id -g)" docker compose --profile prod up -d
+make docker-prod-up
 ```
 
-Stop and remove the production containers with:
+Stop the corresponding Compose services with:
 
 ```bash
-docker compose --profile prod down
+make docker-dev-down
+make docker-prod-down
 ```
+
+The production service joins the external `life365-shared` network and exposes
+port `8000` only to containers on that network. The production Make target
+creates the shared network when it does not already exist.
 
 The production command intentionally uses one worker while authentication
 sessions are held in process-local memory. Configure a shared durable session

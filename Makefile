@@ -1,13 +1,10 @@
 .PHONY: update build clean run codex clean-all \
-	docker-dev-up docker-dev-down docker-prod-up docker-prod-down
+	docker-network docker-dev-up docker-dev-down docker-prod-up docker-prod-down
 
 HOST_USER_ID := $(shell id -u)
 HOST_GROUP_ID := $(shell id -g)
 DOCKER_COMPOSE := USER_ID=$(HOST_USER_ID) GROUP_ID=$(HOST_GROUP_ID) docker compose
-
-# ensure-networks:
-# 	docker network inspect public >/dev/null 2>&1 || docker network create public
-# 	docker network inspect internal-life365-net >/dev/null 2>&1 || docker network create --internal internal-life365-net
+SHARED_DOCKER_NETWORK := life365-shared
 
 update:
 	python3 -m venv .venv
@@ -23,13 +20,16 @@ build:
 run:
 	./.venv/bin/fastapi dev app/main.py
 
+docker-network:
+	docker network inspect $(SHARED_DOCKER_NETWORK) >/dev/null 2>&1 || docker network create $(SHARED_DOCKER_NETWORK)
+
 docker-dev-up:
 	$(DOCKER_COMPOSE) --profile dev run --rm --service-ports --build api-dev
 
 docker-dev-down:
 	$(DOCKER_COMPOSE) --profile dev down
 
-docker-prod-up:
+docker-prod-up: docker-network
 	$(DOCKER_COMPOSE) --profile prod up --build --detach
 
 docker-prod-down:
@@ -50,30 +50,3 @@ codex:
 	npm install @openai/codex --save-dev
 	rm package.json package-lock.json
 	npx codex
-
-# up-dev: ensure-networks
-# 	@set -e; \
-# 	user_id="$$(id -u)"; \
-# 	group_id="$$(id -g)"; \
-# 	cd dev; \
-# 	USER_ID="$$user_id" GROUP_ID="$$group_id" docker compose up
-
-# up-prod: ensure-networks
-# 	@set -e; \
-# 	user_id="$$(id -u)"; \
-# 	group_id="$$(id -g)"; \
-# 	cd prod; \
-# 	USER_ID="$$user_id" GROUP_ID="$$group_id" docker compose up -d
-
-# down:
-# 	@set -e; \
-# 	user_id="$$(id -u)"; \
-# 	group_id="$$(id -g)"; \
-# 	cd dev; \
-# 	USER_ID="$$user_id" GROUP_ID="$$group_id" docker compose down -v --rmi local; \
-# 	cd ../prod; \
-# 	USER_ID="$$user_id" GROUP_ID="$$group_id" docker compose down -v --rmi local
-
-# networks-clean:
-# 	if docker network inspect public >/dev/null 2>&1; then docker network rm public; fi
-# 	if docker network inspect internal-life365-net >/dev/null 2>&1; then docker network rm internal-life365-net; fi
