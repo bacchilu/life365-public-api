@@ -16,7 +16,7 @@ class ProductsGateway(Protocol):
     async def get_product(self, product_id: int) -> Product: ...
 
 
-class AuthenticationGateway(Protocol):
+class CredentialsGateway(Protocol):
     async def authenticate_internal_user(
         self, username: str, password: str
     ) -> PrincipalIdentity: ...
@@ -25,6 +25,8 @@ class AuthenticationGateway(Protocol):
         self, username: str, password: str
     ) -> PrincipalIdentity: ...
 
+
+class TokenSessionGateway(Protocol):
     async def register_token_session(self, session: TokenSession) -> None: ...
 
     async def get_token_session(self, token_id: str) -> TokenSession | None: ...

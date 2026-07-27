@@ -45,11 +45,13 @@ async def get_auth_service() -> AuthService:
         from app.infrastructure.auth import PyJWTTokenCodec
         from app.infrastructure.data_mapper import (
             DATABASE_URL,
-            AuthenticationDataMapper,
+            CredentialsDataMapper,
+            InMemoryTokenSessionDataMapper,
         )
 
         _auth_service = AuthService(
-            authentication_gateway=AuthenticationDataMapper(DATABASE_URL),
+            credentials_gateway=CredentialsDataMapper(DATABASE_URL),
+            token_session_gateway=InMemoryTokenSessionDataMapper(),
             token_codec=PyJWTTokenCodec(_jwt_secret_key()),
         )
 

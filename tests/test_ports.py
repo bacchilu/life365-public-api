@@ -10,9 +10,10 @@ from app.application.domain import (
     TokenSession,
 )
 from app.application.ports import (
-    AuthenticationGateway,
     CheckGateway,
+    CredentialsGateway,
     ProductsGateway,
+    TokenSessionGateway,
 )
 
 
@@ -29,11 +30,7 @@ class FakeProductsGateway:
         return Product(id=product_id, vendor_code="vendor", isin="isin")
 
 
-class FakeAuthenticationGateway:
-    def __init__(self) -> None:
-        self._sessions: dict[str, TokenSession] = {}
-        self._revoked_tokens: set[str] = set()
-
+class FakeCredentialsGateway(CredentialsGateway):
     async def authenticate_internal_user(
         self, username: str, password: str
     ) -> PrincipalIdentity:
@@ -53,6 +50,12 @@ class FakeAuthenticationGateway:
             role=Role.CUSTOMER,
             principal_type=PrincipalType.CUSTOMER,
         )
+
+
+class FakeTokenSessionGateway(TokenSessionGateway):
+    def __init__(self) -> None:
+        self._sessions: dict[str, TokenSession] = {}
+        self._revoked_tokens: set[str] = set()
 
     async def register_token_session(self, session: TokenSession) -> None:
         self._sessions[session.token_id] = session
@@ -78,17 +81,19 @@ def _as_products_gateway(gateway: ProductsGateway) -> ProductsGateway:
     return gateway
 
 
-def _as_authentication_gateway(
-    gateway: AuthenticationGateway,
-) -> AuthenticationGateway:
+def _as_credentials_gateway(gateway: CredentialsGateway) -> CredentialsGateway:
+    return gateway
+
+
+def _as_token_session_gateway(
+    gateway: TokenSessionGateway,
+) -> TokenSessionGateway:
     return gateway
 
 
 @pytest.mark.anyio
-async def test_authentication_gateway_auth_contract_methods() -> None:
-    gateway: AuthenticationGateway = _as_authentication_gateway(
-        FakeAuthenticationGateway()
-    )
+async def test_credentials_gateway_contract_methods() -> None:
+    gateway: CredentialsGateway = _as_credentials_gateway(FakeCredentialsGateway())
 
     internal_user = await gateway.authenticate_internal_user(
         username="admin",
@@ -106,9 +111,9 @@ async def test_authentication_gateway_auth_contract_methods() -> None:
 
 
 @pytest.mark.anyio
-async def test_authentication_gateway_token_session_contract_methods() -> None:
-    gateway: AuthenticationGateway = _as_authentication_gateway(
-        FakeAuthenticationGateway()
+async def test_token_session_gateway_contract_methods() -> None:
+    gateway: TokenSessionGateway = _as_token_session_gateway(
+        FakeTokenSessionGateway()
     )
     issued_at = datetime.now(timezone.utc)
     session = TokenSession(

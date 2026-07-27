@@ -9,12 +9,15 @@ import pytest
 os.environ.setdefault("DATABASE_URL", "postgresql://localhost/test")
 
 import app.infrastructure.data_mapper as data_mapper_root
-import app.infrastructure.data_mapper.auth as auth_mapper_module
+import app.infrastructure.data_mapper.auth.credentials as credentials_mapper_module
 from app.application.domain import PrincipalType, Role, TokenSession
 from app.application.exceptions import AuthenticationException
-from app.infrastructure.data_mapper import AuthenticationDataMapper
+from app.infrastructure.data_mapper import (
+    CredentialsDataMapper,
+    InMemoryTokenSessionDataMapper,
+)
 from app.infrastructure.data_mapper.auth import (
-    AuthenticationDataMapper as AuthDataMapper,
+    CredentialsDataMapper as AuthCredentialsDataMapper,
 )
 from app.infrastructure.data_mapper.auth import verify_legacy_password
 from app.infrastructure.data_mapper.auth.customer import CUSTOMER_COLUMNS
@@ -45,9 +48,13 @@ def test_verify_legacy_password_compares_credentials() -> None:
     assert verify_legacy_password("submitted-credential", "stored-credential") is False
 
 
-def test_data_mapper_root_exports_authentication_data_mapper() -> None:
-    assert data_mapper_root.AuthenticationDataMapper is AuthenticationDataMapper
-    assert data_mapper_root.AuthenticationDataMapper is AuthDataMapper
+def test_data_mapper_root_exports_authentication_data_mappers() -> None:
+    assert data_mapper_root.CredentialsDataMapper is CredentialsDataMapper
+    assert data_mapper_root.CredentialsDataMapper is AuthCredentialsDataMapper
+    assert (
+        data_mapper_root.InMemoryTokenSessionDataMapper
+        is InMemoryTokenSessionDataMapper
+    )
 
 
 def test_customer_authentication_columns_do_not_include_verified() -> None:
@@ -56,8 +63,8 @@ def test_customer_authentication_columns_do_not_include_verified() -> None:
 
 
 @pytest.mark.anyio
-async def test_authentication_data_mapper_stores_token_sessions_in_memory() -> None:
-    mapper = AuthenticationDataMapper("postgresql://unused")
+async def test_in_memory_token_session_mapper_stores_sessions() -> None:
+    mapper = InMemoryTokenSessionDataMapper()
     issued_at = datetime.now(timezone.utc)
     session = TokenSession(
         token_id="token-id",
@@ -76,8 +83,8 @@ async def test_authentication_data_mapper_stores_token_sessions_in_memory() -> N
 
 
 @pytest.mark.anyio
-async def test_authentication_data_mapper_marks_token_sessions_as_revoked() -> None:
-    mapper = AuthenticationDataMapper("postgresql://unused")
+async def test_in_memory_token_session_mapper_marks_sessions_as_revoked() -> None:
+    mapper = InMemoryTokenSessionDataMapper()
     issued_at = datetime.now(timezone.utc)
     session = TokenSession(
         token_id="token-id",
@@ -98,12 +105,16 @@ async def test_authentication_data_mapper_marks_token_sessions_as_revoked() -> N
 
 
 @pytest.mark.anyio
-async def test_authentication_data_mapper_authenticates_enabled_admin(
+async def test_credentials_data_mapper_authenticates_enabled_admin(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     cursor = FakeCursor([(1, "admin-user", "stored-credential", "ADMIN", True)])
-    monkeypatch.setattr(auth_mapper_module, "get_cursor_context", _context_for(cursor))
-    mapper = AuthenticationDataMapper("postgresql://unused")
+    monkeypatch.setattr(
+        credentials_mapper_module,
+        "get_cursor_context",
+        _context_for(cursor),
+    )
+    mapper = CredentialsDataMapper("postgresql://unused")
 
     identity = await mapper.authenticate_internal_user(
         username="admin-user",
@@ -118,12 +129,16 @@ async def test_authentication_data_mapper_authenticates_enabled_admin(
 
 
 @pytest.mark.anyio
-async def test_authentication_data_mapper_authenticates_enabled_buyer(
+async def test_credentials_data_mapper_authenticates_enabled_buyer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     cursor = FakeCursor([(2, "buyer-user", "stored-credential", "BUYER", True)])
-    monkeypatch.setattr(auth_mapper_module, "get_cursor_context", _context_for(cursor))
-    mapper = AuthenticationDataMapper("postgresql://unused")
+    monkeypatch.setattr(
+        credentials_mapper_module,
+        "get_cursor_context",
+        _context_for(cursor),
+    )
+    mapper = CredentialsDataMapper("postgresql://unused")
 
     identity = await mapper.authenticate_internal_user(
         username="buyer-user",
@@ -137,12 +152,16 @@ async def test_authentication_data_mapper_authenticates_enabled_buyer(
 
 
 @pytest.mark.anyio
-async def test_authentication_data_mapper_authenticates_customer(
+async def test_credentials_data_mapper_authenticates_customer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     cursor = FakeCursor([(3, "customer-login", "stored-credential")])
-    monkeypatch.setattr(auth_mapper_module, "get_cursor_context", _context_for(cursor))
-    mapper = AuthenticationDataMapper("postgresql://unused")
+    monkeypatch.setattr(
+        credentials_mapper_module,
+        "get_cursor_context",
+        _context_for(cursor),
+    )
+    mapper = CredentialsDataMapper("postgresql://unused")
 
     identity = await mapper.authenticate_customer(
         username="customer-login",
@@ -182,14 +201,18 @@ async def test_authentication_data_mapper_authenticates_customer(
         ),
     ],
 )
-async def test_authentication_data_mapper_rejects_internal_user_failures_generically(
+async def test_credentials_data_mapper_rejects_internal_user_failures_generically(
     monkeypatch: pytest.MonkeyPatch,
     rows: list[tuple[Any, ...]],
     submitted_credential: str,
 ) -> None:
     cursor = FakeCursor(rows)
-    monkeypatch.setattr(auth_mapper_module, "get_cursor_context", _context_for(cursor))
-    mapper = AuthenticationDataMapper("postgresql://unused")
+    monkeypatch.setattr(
+        credentials_mapper_module,
+        "get_cursor_context",
+        _context_for(cursor),
+    )
+    mapper = CredentialsDataMapper("postgresql://unused")
 
     with pytest.raises(AuthenticationException) as exc:
         await mapper.authenticate_internal_user(
@@ -216,15 +239,19 @@ async def test_authentication_data_mapper_rejects_internal_user_failures_generic
         ),
     ],
 )
-async def test_authentication_data_mapper_does_not_return_credentials(
+async def test_credentials_data_mapper_does_not_return_credentials(
     monkeypatch: pytest.MonkeyPatch,
     method_name: str,
     rows: list[tuple[Any, ...]],
     username: str,
 ) -> None:
     cursor = FakeCursor(rows)
-    monkeypatch.setattr(auth_mapper_module, "get_cursor_context", _context_for(cursor))
-    mapper = AuthenticationDataMapper("postgresql://unused")
+    monkeypatch.setattr(
+        credentials_mapper_module,
+        "get_cursor_context",
+        _context_for(cursor),
+    )
+    mapper = CredentialsDataMapper("postgresql://unused")
     authenticate = getattr(mapper, method_name)
 
     identity = await authenticate(
@@ -256,14 +283,18 @@ async def test_authentication_data_mapper_does_not_return_credentials(
         ),
     ],
 )
-async def test_authentication_data_mapper_rejects_customer_failures_generically(
+async def test_credentials_data_mapper_rejects_customer_failures_generically(
     monkeypatch: pytest.MonkeyPatch,
     rows: list[tuple[Any, ...]],
     submitted_credential: str,
 ) -> None:
     cursor = FakeCursor(rows)
-    monkeypatch.setattr(auth_mapper_module, "get_cursor_context", _context_for(cursor))
-    mapper = AuthenticationDataMapper("postgresql://unused")
+    monkeypatch.setattr(
+        credentials_mapper_module,
+        "get_cursor_context",
+        _context_for(cursor),
+    )
+    mapper = CredentialsDataMapper("postgresql://unused")
 
     with pytest.raises(AuthenticationException) as exc:
         await mapper.authenticate_customer(
@@ -290,15 +321,19 @@ async def test_authentication_data_mapper_rejects_customer_failures_generically(
         ),
     ],
 )
-async def test_authentication_data_mapper_rejects_malformed_rows_generically(
+async def test_credentials_data_mapper_rejects_malformed_rows_generically(
     monkeypatch: pytest.MonkeyPatch,
     method_name: str,
     rows: list[tuple[Any, ...]],
     username: str,
 ) -> None:
     cursor = FakeCursor(rows)
-    monkeypatch.setattr(auth_mapper_module, "get_cursor_context", _context_for(cursor))
-    mapper = AuthenticationDataMapper("postgresql://unused")
+    monkeypatch.setattr(
+        credentials_mapper_module,
+        "get_cursor_context",
+        _context_for(cursor),
+    )
+    mapper = CredentialsDataMapper("postgresql://unused")
     authenticate = getattr(mapper, method_name)
 
     with pytest.raises(AuthenticationException) as exc:
@@ -308,10 +343,10 @@ async def test_authentication_data_mapper_rejects_malformed_rows_generically(
 
 
 @pytest.mark.anyio
-async def test_authentication_data_mapper_uses_same_generic_failure_message(
+async def test_credentials_data_mapper_uses_same_generic_failure_message(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    mapper = AuthenticationDataMapper("postgresql://unused")
+    mapper = CredentialsDataMapper("postgresql://unused")
     cases = [
         (
             "authenticate_internal_user",
@@ -343,7 +378,7 @@ async def test_authentication_data_mapper_uses_same_generic_failure_message(
     for method_name, rows, username, submitted_credential in cases:
         cursor = FakeCursor(rows)
         monkeypatch.setattr(
-            auth_mapper_module,
+            credentials_mapper_module,
             "get_cursor_context",
             _context_for(cursor),
         )

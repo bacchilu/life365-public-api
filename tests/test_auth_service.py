@@ -21,17 +21,15 @@ from app.application.domain import (
     TokenSession,
 )
 from app.application.exceptions import AuthenticationException
-from app.application.ports import AuthenticationGateway, TokenCodec
+from app.application.ports import CredentialsGateway, TokenCodec, TokenSessionGateway
 from app.application.services.auth_service import TOKEN_EXPIRATION_DAYS, AuthService
 from app.infrastructure.auth import JWT_ALGORITHM, PyJWTTokenCodec
 
 _TEST_SECRET_KEY = "test-secret-key-with-at-least-32-bytes"
 
 
-class FakeAuthenticationGateway(AuthenticationGateway):
+class FakeCredentialsGateway(CredentialsGateway):
     def __init__(self) -> None:
-        self.sessions: dict[str, TokenSession] = {}
-        self.revoked_token_ids: set[str] = set()
         self.internal_authentication_requests: list[tuple[str, str]] = []
         self.customer_authentication_requests: list[tuple[str, str]] = []
 
@@ -57,6 +55,12 @@ class FakeAuthenticationGateway(AuthenticationGateway):
             principal_type=PrincipalType.CUSTOMER,
         )
 
+
+class FakeTokenSessionGateway(TokenSessionGateway):
+    def __init__(self) -> None:
+        self.sessions: dict[str, TokenSession] = {}
+        self.revoked_token_ids: set[str] = set()
+
     async def register_token_session(self, session: TokenSession) -> None:
         self.sessions[session.token_id] = session
 
@@ -80,14 +84,21 @@ class FakeAuthenticationGateway(AuthenticationGateway):
             self.sessions[token_id] = replace(session, revoked=True)
 
 
+class FakeAuthDependencies:
+    def __init__(self) -> None:
+        self.credentials = FakeCredentialsGateway()
+        self.token_sessions = FakeTokenSessionGateway()
+
+
 def _auth_service(
-    gateway: AuthenticationGateway,
+    dependencies: FakeAuthDependencies,
     token_id_factory: Callable[[], str] = lambda: "token-id",
     clock: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
 ) -> AuthService:
     codec: TokenCodec = PyJWTTokenCodec(_TEST_SECRET_KEY)
     return AuthService(
-        authentication_gateway=gateway,
+        credentials_gateway=dependencies.credentials,
+        token_session_gateway=dependencies.token_sessions,
         token_codec=codec,
         clock=clock,
         token_id_factory=token_id_factory,
@@ -125,8 +136,8 @@ def _encode_claims(claims: dict[str, object]) -> str:
 
 @pytest.mark.anyio
 async def test_auth_service_login_authenticates_internal_user() -> None:
-    gateway = FakeAuthenticationGateway()
-    service = _auth_service(gateway)
+    dependencies = FakeAuthDependencies()
+    service = _auth_service(dependencies)
 
     result = await service.login(
         username="admin",
@@ -134,20 +145,22 @@ async def test_auth_service_login_authenticates_internal_user() -> None:
         principal_type=PrincipalType.USER,
     )
 
-    assert gateway.internal_authentication_requests == [("admin", "submitted-password")]
-    assert gateway.customer_authentication_requests == []
+    assert dependencies.credentials.internal_authentication_requests == [
+        ("admin", "submitted-password")
+    ]
+    assert dependencies.credentials.customer_authentication_requests == []
     assert result.user.username == "admin"
     assert result.user.role is Role.ADMIN
     assert result.user.principal_type is PrincipalType.USER
     assert result.user.permissions == _all_product_permissions()
     _assert_all_product_policy(result.user.product_access)
-    assert result.session == gateway.sessions[result.user.token_id]
+    assert result.session == dependencies.token_sessions.sessions[result.user.token_id]
 
 
 @pytest.mark.anyio
 async def test_auth_service_login_authenticates_customer_and_issues_token() -> None:
-    gateway = FakeAuthenticationGateway()
-    service = _auth_service(gateway)
+    dependencies = FakeAuthDependencies()
+    service = _auth_service(dependencies)
 
     result = await service.login(
         username="customer-login",
@@ -155,8 +168,8 @@ async def test_auth_service_login_authenticates_customer_and_issues_token() -> N
         principal_type=PrincipalType.CUSTOMER,
     )
 
-    assert gateway.internal_authentication_requests == []
-    assert gateway.customer_authentication_requests == [
+    assert dependencies.credentials.internal_authentication_requests == []
+    assert dependencies.credentials.customer_authentication_requests == [
         ("customer-login", "submitted-password")
     ]
     assert result.user.username == "customer-login"
@@ -164,13 +177,13 @@ async def test_auth_service_login_authenticates_customer_and_issues_token() -> N
     assert result.user.principal_type is PrincipalType.CUSTOMER
     assert result.user.permissions == _customer_product_permissions()
     _assert_customer_product_policy(result.user.product_access)
-    assert result.session == gateway.sessions[result.user.token_id]
+    assert result.session == dependencies.token_sessions.sessions[result.user.token_id]
 
 
 @pytest.mark.anyio
 async def test_auth_service_issues_token_for_internal_user() -> None:
-    gateway = FakeAuthenticationGateway()
-    service = _auth_service(gateway)
+    dependencies = FakeAuthDependencies()
+    service = _auth_service(dependencies)
     principal = PrincipalIdentity(
         id=123,
         username="buyer",
@@ -196,7 +209,7 @@ async def test_auth_service_issues_token_for_internal_user() -> None:
     assert result.user.token_id == "token-id"
     assert result.user.permissions == _all_product_permissions()
     _assert_buyer_product_policy(result.user.product_access, owner_id=123)
-    assert result.session == gateway.sessions["token-id"]
+    assert result.session == dependencies.token_sessions.sessions["token-id"]
     assert result.session.expires_at > result.session.issued_at
     assert (result.session.expires_at - result.session.issued_at).days == (
         TOKEN_EXPIRATION_DAYS
@@ -205,8 +218,8 @@ async def test_auth_service_issues_token_for_internal_user() -> None:
 
 @pytest.mark.anyio
 async def test_auth_service_issues_token_for_customer() -> None:
-    gateway = FakeAuthenticationGateway()
-    service = _auth_service(gateway)
+    dependencies = FakeAuthDependencies()
+    service = _auth_service(dependencies)
     principal = PrincipalIdentity(
         id=456,
         username="customer-login",
@@ -232,9 +245,9 @@ async def test_auth_service_issues_token_for_customer() -> None:
 
 @pytest.mark.anyio
 async def test_auth_service_generates_unique_token_ids() -> None:
-    gateway = FakeAuthenticationGateway()
+    dependencies = FakeAuthDependencies()
     token_ids = count(1)
-    service = _auth_service(gateway, lambda: f"token-id-{next(token_ids)}")
+    service = _auth_service(dependencies, lambda: f"token-id-{next(token_ids)}")
     principal = PrincipalIdentity(
         id=123,
         username="buyer",
@@ -249,13 +262,13 @@ async def test_auth_service_generates_unique_token_ids() -> None:
     assert second.user.token_id == "token-id-2"
     assert _decode_token(first.access_token)["jti"] == "token-id-1"
     assert _decode_token(second.access_token)["jti"] == "token-id-2"
-    assert set(gateway.sessions) == {"token-id-1", "token-id-2"}
+    assert set(dependencies.token_sessions.sessions) == {"token-id-1", "token-id-2"}
 
 
 @pytest.mark.anyio
 async def test_auth_service_login_result_repr_does_not_expose_access_token() -> None:
-    gateway = FakeAuthenticationGateway()
-    service = _auth_service(gateway)
+    dependencies = FakeAuthDependencies()
+    service = _auth_service(dependencies)
     principal = PrincipalIdentity(
         id=123,
         username="buyer",
@@ -270,8 +283,8 @@ async def test_auth_service_login_result_repr_does_not_expose_access_token() -> 
 
 @pytest.mark.anyio
 async def test_auth_service_validates_issued_token() -> None:
-    gateway = FakeAuthenticationGateway()
-    service = _auth_service(gateway)
+    dependencies = FakeAuthDependencies()
+    service = _auth_service(dependencies)
     principal = PrincipalIdentity(
         id=123,
         username="buyer",
@@ -302,8 +315,8 @@ async def test_auth_service_validates_issued_tokens_with_role_policies(
     role: Role,
     principal_type: PrincipalType,
 ) -> None:
-    gateway = FakeAuthenticationGateway()
-    service = _auth_service(gateway)
+    dependencies = FakeAuthDependencies()
+    service = _auth_service(dependencies)
     principal = PrincipalIdentity(
         id=principal_id,
         username=username,
@@ -334,8 +347,8 @@ async def test_auth_service_validates_issued_tokens_with_role_policies(
 @pytest.mark.anyio
 @pytest.mark.parametrize("token", [None, "", "   "])
 async def test_auth_service_rejects_missing_token(token: str | None) -> None:
-    gateway = FakeAuthenticationGateway()
-    service = _auth_service(gateway)
+    dependencies = FakeAuthDependencies()
+    service = _auth_service(dependencies)
 
     with pytest.raises(AuthenticationException) as exc:
         await service.validate_token(token)
@@ -345,8 +358,8 @@ async def test_auth_service_rejects_missing_token(token: str | None) -> None:
 
 @pytest.mark.anyio
 async def test_auth_service_rejects_malformed_token() -> None:
-    gateway = FakeAuthenticationGateway()
-    service = _auth_service(gateway)
+    dependencies = FakeAuthDependencies()
+    service = _auth_service(dependencies)
 
     with pytest.raises(AuthenticationException) as exc:
         await service.validate_token("not-a-jwt")
@@ -356,8 +369,8 @@ async def test_auth_service_rejects_malformed_token() -> None:
 
 @pytest.mark.anyio
 async def test_auth_service_rejects_invalid_signature_token() -> None:
-    gateway = FakeAuthenticationGateway()
-    service = _auth_service(gateway)
+    dependencies = FakeAuthDependencies()
+    service = _auth_service(dependencies)
     token = PyJWTTokenCodec("different-test-secret-key-with-at-least-32-bytes").encode(
         _valid_claims()
     )
@@ -370,8 +383,8 @@ async def test_auth_service_rejects_invalid_signature_token() -> None:
 
 @pytest.mark.anyio
 async def test_auth_service_rejects_expired_token() -> None:
-    gateway = FakeAuthenticationGateway()
-    service = _auth_service(gateway)
+    dependencies = FakeAuthDependencies()
+    service = _auth_service(dependencies)
     token = _encode_claims(
         _valid_claims(
             token_id="expired-token-id",
@@ -387,8 +400,8 @@ async def test_auth_service_rejects_expired_token() -> None:
 
 @pytest.mark.anyio
 async def test_auth_service_rejects_unknown_token() -> None:
-    gateway = FakeAuthenticationGateway()
-    service = _auth_service(gateway)
+    dependencies = FakeAuthDependencies()
+    service = _auth_service(dependencies)
     token = _encode_claims(_valid_claims(token_id="unknown-token-id"))
 
     with pytest.raises(AuthenticationException) as exc:
@@ -399,8 +412,8 @@ async def test_auth_service_rejects_unknown_token() -> None:
 
 @pytest.mark.anyio
 async def test_auth_service_rejects_revoked_token() -> None:
-    gateway = FakeAuthenticationGateway()
-    service = _auth_service(gateway)
+    dependencies = FakeAuthDependencies()
+    service = _auth_service(dependencies)
     principal = PrincipalIdentity(
         id=123,
         username="buyer",
@@ -415,13 +428,13 @@ async def test_auth_service_rejects_revoked_token() -> None:
         await service.validate_token(result.access_token)
 
     assert str(exc.value) == "Invalid credentials"
-    assert gateway.sessions[result.user.token_id].revoked is True
+    assert dependencies.token_sessions.sessions[result.user.token_id].revoked is True
 
 
 @pytest.mark.anyio
 async def test_auth_service_rejects_token_without_token_id() -> None:
-    gateway = FakeAuthenticationGateway()
-    service = _auth_service(gateway)
+    dependencies = FakeAuthDependencies()
+    service = _auth_service(dependencies)
     claims = _valid_claims()
     del claims["jti"]
     token = _encode_claims(claims)

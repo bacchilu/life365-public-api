@@ -8,7 +8,7 @@ from app.application.domain import (
     PrincipalType,
     TokenSession,
 )
-from app.application.ports import AuthenticationGateway, TokenCodec
+from app.application.ports import CredentialsGateway, TokenCodec, TokenSessionGateway
 
 from .claims import IdentityClaims, build_token_claims, parse_identity_claims
 from .errors import raise_invalid_credentials
@@ -19,12 +19,14 @@ from .users import build_authenticated_user
 class AuthService:
     def __init__(
         self,
-        authentication_gateway: AuthenticationGateway,
+        credentials_gateway: CredentialsGateway,
+        token_session_gateway: TokenSessionGateway,
         token_codec: TokenCodec,
         clock: Callable[[], datetime] = utc_now,
         token_id_factory: Callable[[], str] = new_token_id,
     ) -> None:
-        self._authentication_gateway = authentication_gateway
+        self._credentials_gateway = credentials_gateway
+        self._token_session_gateway = token_session_gateway
         self._token_codec = token_codec
         self._clock = clock
         self._token_id_factory = token_id_factory
@@ -36,14 +38,14 @@ class AuthService:
         principal_type: PrincipalType,
     ) -> LoginResult:
         if principal_type is PrincipalType.USER:
-            principal = await self._authentication_gateway.authenticate_internal_user(
+            principal = await self._credentials_gateway.authenticate_internal_user(
                 username=username,
                 password=password,
             )
             return await self.issue_token(principal)
 
         if principal_type is PrincipalType.CUSTOMER:
-            principal = await self._authentication_gateway.authenticate_customer(
+            principal = await self._credentials_gateway.authenticate_customer(
                 username=username,
                 password=password,
             )
@@ -70,7 +72,7 @@ class AuthService:
             issued_at=issued_at,
             expires_at=expires_at,
         )
-        await self._authentication_gateway.register_token_session(session)
+        await self._token_session_gateway.register_token_session(session)
 
         user: AuthenticatedUser = build_authenticated_user(
             principal_id=principal.id,
@@ -93,14 +95,14 @@ class AuthService:
         claims: Mapping[str, object] = self._token_codec.decode(token.strip())
         identity_claims: IdentityClaims = parse_identity_claims(claims)
 
-        if not await self._authentication_gateway.is_token_known(
+        if not await self._token_session_gateway.is_token_known(
             identity_claims.token_id
         ):
             raise_invalid_credentials()
 
         session: (
             TokenSession | None
-        ) = await self._authentication_gateway.get_token_session(
+        ) = await self._token_session_gateway.get_token_session(
             identity_claims.token_id
         )
         if session is None:
@@ -113,7 +115,7 @@ class AuthService:
         ):
             raise_invalid_credentials()
 
-        if await self._authentication_gateway.is_token_revoked(
+        if await self._token_session_gateway.is_token_revoked(
             identity_claims.token_id
         ):
             raise_invalid_credentials()
@@ -133,7 +135,7 @@ class AuthService:
         if token_id.strip() == "":
             raise_invalid_credentials()
 
-        if not await self._authentication_gateway.is_token_known(token_id):
+        if not await self._token_session_gateway.is_token_known(token_id):
             raise_invalid_credentials()
 
-        await self._authentication_gateway.revoke_token(token_id)
+        await self._token_session_gateway.revoke_token(token_id)
