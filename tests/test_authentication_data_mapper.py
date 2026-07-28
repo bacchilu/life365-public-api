@@ -15,9 +15,11 @@ from app.application.exceptions import AuthenticationException
 from app.infrastructure.data_mapper import (
     CredentialsDataMapper,
     InMemoryTokenSessionDataMapper,
+    SQLiteTokenSessionDataMapper,
 )
 from app.infrastructure.data_mapper.auth import (
     CredentialsDataMapper as AuthCredentialsDataMapper,
+    SQLiteTokenSessionDataMapper as AuthSQLiteTokenSessionDataMapper,
 )
 from app.infrastructure.data_mapper.auth import verify_legacy_password
 from app.infrastructure.data_mapper.auth.customer import CUSTOMER_COLUMNS
@@ -55,6 +57,11 @@ def test_data_mapper_root_exports_authentication_data_mappers() -> None:
         data_mapper_root.InMemoryTokenSessionDataMapper
         is InMemoryTokenSessionDataMapper
     )
+    assert (
+        data_mapper_root.SQLiteTokenSessionDataMapper
+        is SQLiteTokenSessionDataMapper
+    )
+    assert SQLiteTokenSessionDataMapper is AuthSQLiteTokenSessionDataMapper
 
 
 def test_customer_authentication_columns_do_not_include_verified() -> None:

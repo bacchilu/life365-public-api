@@ -115,9 +115,7 @@ class AuthService:
         ):
             raise_invalid_credentials()
 
-        if await self._token_session_gateway.is_token_revoked(
-            identity_claims.token_id
-        ):
+        if await self._token_session_gateway.is_token_revoked(identity_claims.token_id):
             raise_invalid_credentials()
 
         if session.expires_at <= self._clock():
