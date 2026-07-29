@@ -37,6 +37,22 @@ Expected response:
 {"status": "ok", "db": "ok"}
 ```
 
+Inspect the SQLite token sessions:
+
+```bash
+sqlite3 -header -column data/token-sessions.sqlite3 \
+  'SELECT * FROM token_sessions;'
+```
+
+Example output:
+
+```text
+token_id                              principal_id  principal_type  issued_at                         expires_at                        revoked
+------------------------------------  ------------  --------------  --------------------------------  --------------------------------  -------
+388331e6-aa53-4e9e-a0a7-2c63de38c2a3  2             user            2026-07-29T12:12:02.239790+00:00  2026-08-28T12:12:02.239790+00:00  0
+6b14e691-3ec1-4649-9174-12e1bc67f79d  2             user            2026-07-29T12:12:06.377408+00:00  2026-08-28T12:12:06.377408+00:00  0
+```
+
 ## Docker
 
 Build the image with a container user matching the current host user:
