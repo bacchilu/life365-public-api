@@ -1,4 +1,6 @@
 import os
+from enum import StrEnum
+from pathlib import Path
 from typing import Annotated, Protocol
 
 from dotenv import load_dotenv
@@ -7,10 +9,20 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.application.domain import AuthenticatedUser
 from app.application.exceptions import AuthenticationException
+from app.application.ports import TokenSessionGateway
 from app.application.services.auth_service import AuthService
 
 _INVALID_CREDENTIALS_DETAIL = "Invalid credentials"
 _WWW_AUTHENTICATE_BEARER = {"WWW-Authenticate": "Bearer"}
+
+
+class TokenSessionBackend(StrEnum):
+    MEMORY = "memory"
+    SQLITE = "sqlite"
+
+
+TOKEN_SESSION_BACKEND: TokenSessionBackend = TokenSessionBackend.SQLITE
+SQLITE_TOKEN_SESSION_DATABASE_PATH = Path("data/token-sessions.sqlite3")
 
 bearer_token = HTTPBearer(auto_error=False)
 _auth_service: AuthService | None = None
@@ -38,6 +50,25 @@ def _jwt_secret_key() -> str:
     return secret_key
 
 
+async def _create_token_session_gateway() -> TokenSessionGateway:
+    from app.infrastructure.data_mapper.auth import (
+        InMemoryTokenSessionDataMapper,
+        SQLiteTokenSessionDataMapper,
+    )
+
+    if TOKEN_SESSION_BACKEND is TokenSessionBackend.MEMORY:
+        return InMemoryTokenSessionDataMapper()
+
+    if TOKEN_SESSION_BACKEND is TokenSessionBackend.SQLITE:
+        data_mapper: TokenSessionGateway = SQLiteTokenSessionDataMapper(
+            SQLITE_TOKEN_SESSION_DATABASE_PATH
+        )
+        await data_mapper.initialize()
+        return data_mapper
+
+    raise RuntimeError(f"Unsupported token session backend: {TOKEN_SESSION_BACKEND}")
+
+
 async def get_auth_service() -> AuthService:
     global _auth_service
 
@@ -46,12 +77,11 @@ async def get_auth_service() -> AuthService:
         from app.infrastructure.data_mapper import (
             DATABASE_URL,
             CredentialsDataMapper,
-            InMemoryTokenSessionDataMapper,
         )
 
         _auth_service = AuthService(
             credentials_gateway=CredentialsDataMapper(DATABASE_URL),
-            token_session_gateway=InMemoryTokenSessionDataMapper(),
+            token_session_gateway=await _create_token_session_gateway(),
             token_codec=PyJWTTokenCodec(_jwt_secret_key()),
         )
 
