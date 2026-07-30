@@ -2,3 +2,5 @@
 __pycache__/
 node_modules/
 .codex
+data/*
+!data/.gitkeep

@@ -8,7 +8,9 @@ ARG USER_ID=1000
 ARG GROUP_ID=1000
 ARG USERNAME=python
 
-RUN groupadd --gid "${GROUP_ID}" "${USERNAME}" && useradd --uid "${USER_ID}" --gid "${GROUP_ID}" --create-home --shell /bin/bash "${USERNAME}"
+RUN groupadd --gid "${GROUP_ID}" "${USERNAME}" \
+    && useradd --uid "${USER_ID}" --gid "${GROUP_ID}" --create-home --shell /bin/bash "${USERNAME}" \
+    && install -d -o "${USERNAME}" -g "${USERNAME}" /data
 
 COPY requirements-lock.txt ./
 
@@ -20,5 +22,4 @@ EXPOSE 8000
 
 USER ${USERNAME}
 
-# Keep one worker while token sessions are stored in process-local memory.
 CMD ["fastapi", "run", "app/main.py", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]

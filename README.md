@@ -64,14 +64,18 @@ docker build --build-arg USER_ID="$(id -u)" --build-arg GROUP_ID="$(id -g)" -t l
 Run the source bundled in the image in production mode:
 
 ```bash
-docker run --rm -it --env-file .env -p 8000:8000 life365-public-api
+docker run --rm -it --env-file .env -p 8000:8000 \
+  -v "$(pwd)/data:/data" life365-public-api
 ```
 
 Run in development mode with automatic reload and the repository bind-mounted
 at `/app`:
 
 ```bash
-docker run --rm -it --env-file .env -p 8000:8000 -v "$(pwd):/app" life365-public-api fastapi dev app/main.py --host 0.0.0.0 --port 8000
+docker run --rm -it --env-file .env -p 8000:8000 \
+  -v "$(pwd):/app" -v "$(pwd)/data:/data" \
+  life365-public-api fastapi dev app/main.py \
+  --host 0.0.0.0 --port 8000
 ```
 
 The same modes are available through Docker Compose. Start development mode
@@ -98,9 +102,9 @@ The production service joins the external `life365-shared` network and exposes
 port `8000` only to containers on that network. The production Make target
 creates the shared network when it does not already exist.
 
-The production command intentionally uses one worker while authentication
-sessions are held in process-local memory. Configure a shared durable session
-store before scaling to multiple workers or containers.
+Authentication sessions are stored in `/data/token-sessions.sqlite3`. Docker
+Compose bind-mounts the repository's `data` directory at `/data`; Git tracks
+the directory scaffold but ignores the generated SQLite files.
 
 If PostgreSQL runs directly on the Docker host, use
 `host.docker.internal` instead of `localhost` in `DATABASE_URL` and add this

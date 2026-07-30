@@ -8,6 +8,8 @@ x-api: &api
   image: life365-public-api:latest
   env_file:
     - .env
+  environment:
+    TOKEN_SESSION_DATABASE_PATH: /data/token-sessions.sqlite3
   init: true
 
 services:
@@ -19,6 +21,7 @@ services:
       - "8000:8000"
     volumes:
       - .:/app
+      - ./data:/data
     command:
       - fastapi
       - dev
@@ -34,6 +37,8 @@ services:
       - prod
     expose:
       - "8000"
+    volumes:
+      - ./data:/data
     networks:
       - life365-shared
     restart: unless-stopped

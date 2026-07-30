@@ -22,7 +22,12 @@ class TokenSessionBackend(StrEnum):
 
 
 TOKEN_SESSION_BACKEND: TokenSessionBackend = TokenSessionBackend.SQLITE
-SQLITE_TOKEN_SESSION_DATABASE_PATH = Path("data/token-sessions.sqlite3")
+SQLITE_TOKEN_SESSION_DATABASE_PATH = Path(
+    os.environ.get(
+        "TOKEN_SESSION_DATABASE_PATH",
+        "data/token-sessions.sqlite3",
+    )
+)
 
 bearer_token = HTTPBearer(auto_error=False)
 _auth_service: AuthService | None = None
