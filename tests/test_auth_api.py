@@ -98,6 +98,9 @@ class FakeProductsService:
         self.list_users: list[AuthenticatedUser] = []
         self.get_requests: list[int] = []
         self.get_users: list[AuthenticatedUser] = []
+        self.recommend_requests: list[
+            tuple[AuthenticatedUser, int | None, int | None]
+        ] = []
 
     async def get_products(
         self,
@@ -125,6 +128,15 @@ class FakeProductsService:
             raise self._get_exception
 
         return self._product
+
+    async def recommend_products(
+        self,
+        user: AuthenticatedUser,
+        order_id: int | None = None,
+        customer_id: int | None = None,
+    ) -> object:
+        self.recommend_requests.append((user, order_id, customer_id))
+        return {}
 
 
 @pytest.fixture(autouse=True)
@@ -479,6 +491,73 @@ async def test_get_product_requires_valid_bearer_token(
     assert fake_products_service.get_requests == [42]
 
 
+@pytest.mark.parametrize(
+    ("query", "order_id", "customer_id"),
+    [
+        ("order_id=1012590", 1012590, None),
+        ("customer_id=25615", None, 25615),
+    ],
+)
+@pytest.mark.anyio
+async def test_recommend_products_requires_valid_bearer_token(
+    monkeypatch: pytest.MonkeyPatch,
+    query: str,
+    order_id: int | None,
+    customer_id: int | None,
+) -> None:
+    fake_auth_service = FakeAuthService()
+    fake_products_service = FakeProductsService()
+    _override_auth_service(fake_auth_service)
+    _override_products_service(monkeypatch, fake_products_service)
+
+    async with _client() as client:
+        response = await client.get(
+            f"/products/recommend?{query}",
+            headers={"Authorization": "Bearer access-token"},
+        )
+
+    assert response.status_code == 200
+    assert fake_auth_service.validated_tokens == ["access-token"]
+    assert fake_products_service.recommend_requests == [
+        (fake_auth_service._validate_user, order_id, customer_id)
+    ]
+
+
+@pytest.mark.parametrize(
+    ("query", "detail"),
+    [
+        ("", "Provide exactly one of order_id or customer_id"),
+        (
+            "order_id=1012590&customer_id=25615",
+            "Provide exactly one of order_id or customer_id",
+        ),
+        ("order_id=0", "order_id/customer_id must be a positive integer"),
+        ("customer_id=-1", "order_id/customer_id must be a positive integer"),
+    ],
+)
+@pytest.mark.anyio
+async def test_recommend_products_rejects_invalid_context(
+    monkeypatch: pytest.MonkeyPatch,
+    query: str,
+    detail: str,
+) -> None:
+    fake_auth_service = FakeAuthService()
+    fake_products_service = FakeProductsService()
+    _override_auth_service(fake_auth_service)
+    _override_products_service(monkeypatch, fake_products_service)
+
+    separator = "?" if query else ""
+    async with _client() as client:
+        response = await client.get(
+            f"/products/recommend{separator}{query}",
+            headers={"Authorization": "Bearer access-token"},
+        )
+
+    assert response.status_code == 400
+    assert response.json() == {"detail": detail}
+    assert fake_products_service.recommend_requests == []
+
+
 @pytest.mark.anyio
 async def test_list_products_returns_403_for_authorization_failure(
     monkeypatch: pytest.MonkeyPatch,
@@ -535,8 +614,10 @@ async def test_get_product_returns_403_for_authorization_failure(
     ("path", "headers"),
     [
         ("/products", {}),
+        ("/products/recommend", {}),
         ("/products/42", {}),
         ("/products", {"Authorization": "Basic access-token"}),
+        ("/products/recommend", {"Authorization": "Basic access-token"}),
         ("/products/42", {"Authorization": "Basic access-token"}),
     ],
 )
@@ -561,7 +642,7 @@ async def test_product_routes_return_401_without_valid_bearer_header(
     assert fake_products_service.get_requests == []
 
 
-@pytest.mark.parametrize("path", ["/products", "/products/42"])
+@pytest.mark.parametrize("path", ["/products", "/products/recommend", "/products/42"])
 @pytest.mark.parametrize(
     "token",
     [
@@ -608,4 +689,5 @@ async def test_app_registers_auth_health_and_product_routes() -> None:
     assert "/auth/logout" in paths
     assert "/health" in paths
     assert "/products" in paths
+    assert "/products/recommend" in paths
     assert "/products/{product_id}" in paths

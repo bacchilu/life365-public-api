@@ -6,16 +6,18 @@ from app.application.domain import (
 )
 from app.application.dtos import ProductDTO, product_to_dto
 from app.application.exceptions import AuthorizationException, DBException
-from app.application.ports import ProductsGateway
+from app.application.ports import Life365APIGateway, ProductsGateway
 
 
 class ProductsService:
     def __init__(
         self,
         data_mapper: ProductsGateway,
+        life365_api_gateway: Life365APIGateway,
         authorization: AuthorizationService | None = None,
     ) -> None:
         self._data_mapper = data_mapper
+        self._life365_api_gateway = life365_api_gateway
         self._authorization = authorization or AuthorizationService()
 
     async def get_products(
@@ -55,3 +57,13 @@ class ProductsService:
             raise
         except Exception as e:
             raise DBException("Product lookup failed") from e
+
+    async def recommend_products(
+        self,
+        user: AuthenticatedUser,
+        order_id: int | None = None,
+        customer_id: int | None = None,
+    ) -> object:
+        return await self._life365_api_gateway.recommend_products(
+            order_id=order_id, customer_id=customer_id
+        )

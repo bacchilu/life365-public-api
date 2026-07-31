@@ -12,9 +12,11 @@ from app.application.domain import (
 from app.application.ports import (
     CheckGateway,
     CredentialsGateway,
+    Life365APIGateway,
     ProductsGateway,
     TokenSessionGateway,
 )
+from app.infrastructure.life365_portal_api import Life365PortalAPI
 
 
 class FakeCheckGateway:
@@ -78,6 +80,10 @@ def _as_check_gateway(gateway: CheckGateway) -> CheckGateway:
 
 
 def _as_products_gateway(gateway: ProductsGateway) -> ProductsGateway:
+    return gateway
+
+
+def _as_life365_api_gateway(gateway: Life365APIGateway) -> Life365APIGateway:
     return gateway
 
 
@@ -154,3 +160,9 @@ async def test_products_gateway_contract_methods() -> None:
         vendor_code="vendor",
         isin="isin",
     )
+
+
+def test_life365_portal_api_implements_gateway() -> None:
+    gateway: Life365APIGateway = _as_life365_api_gateway(Life365PortalAPI())
+
+    assert isinstance(gateway, Life365PortalAPI)

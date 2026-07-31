@@ -16,6 +16,12 @@ class ProductsGateway(Protocol):
     async def get_product(self, product_id: int) -> Product: ...
 
 
+class Life365APIGateway(Protocol):
+    async def recommend_products(
+        self, order_id: int | None = None, customer_id: int | None = None
+    ) -> object: ...
+
+
 class CredentialsGateway(Protocol):
     async def authenticate_internal_user(
         self, username: str, password: str

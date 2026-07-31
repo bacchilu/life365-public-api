@@ -19,7 +19,7 @@ from app.application.domain import (
     resolve_product_access_policy,
 )
 from app.application.exceptions import AuthorizationException
-from app.application.ports import CheckGateway, ProductsGateway
+from app.application.ports import CheckGateway, Life365APIGateway, ProductsGateway
 from app.application.services.health_service import HealthService
 from app.application.services.products_service import ProductsService
 
@@ -70,6 +70,23 @@ class FakeProductsGateway(ProductsGateway):
             isin="single-isin",
             enabled=True,
         )
+
+
+class FakeLife365APIGateway(Life365APIGateway):
+    def __init__(self) -> None:
+        self.recommend_requests: list[tuple[int | None, int | None]] = []
+
+    async def recommend_products(
+        self,
+        order_id: int | None = None,
+        customer_id: int | None = None,
+    ) -> object:
+        self.recommend_requests.append((order_id, customer_id))
+        return {}
+
+
+def _products_service(gateway: ProductsGateway) -> ProductsService:
+    return ProductsService(gateway, FakeLife365APIGateway())
 
 
 def _authenticated_user(
@@ -131,7 +148,7 @@ async def test_products_service_get_products_allows_read_roles(
             Product(id=2, vendor_code="second", isin="second-isin", enabled=True),
         ]
     )
-    service = ProductsService(gateway)
+    service = _products_service(gateway)
     user = _authenticated_user(
         role=role,
         principal_type=principal_type,
@@ -165,7 +182,7 @@ async def test_products_service_get_product_allows_read_roles(
             enabled=True,
         )
     )
-    service = ProductsService(gateway)
+    service = _products_service(gateway)
     user = _authenticated_user(
         role=role,
         principal_type=principal_type,
@@ -191,7 +208,7 @@ async def test_health_service_uses_check_gateway() -> None:
 @pytest.mark.anyio
 async def test_products_service_get_products_uses_products_gateway() -> None:
     gateway = FakeProductsGateway()
-    service = ProductsService(gateway)
+    service = _products_service(gateway)
     user = _authenticated_user()
 
     products = await service.get_products(user=user, limit=10, offset=0)
@@ -210,7 +227,7 @@ async def test_products_service_get_products_uses_products_gateway() -> None:
 @pytest.mark.anyio
 async def test_products_service_get_product_uses_products_gateway() -> None:
     gateway = FakeProductsGateway()
-    service = ProductsService(gateway)
+    service = _products_service(gateway)
     user = _authenticated_user()
 
     product = await service.get_product(user=user, product_id=7)
@@ -220,6 +237,27 @@ async def test_products_service_get_product_uses_products_gateway() -> None:
     assert product.isin == "single-isin"
     assert product.enabled is True
     assert gateway.product_requests == [7]
+
+
+@pytest.mark.parametrize(
+    ("order_id", "customer_id"),
+    [(1012590, None), (None, 25615)],
+)
+@pytest.mark.anyio
+async def test_products_service_delegates_product_recommendations(
+    order_id: int | None,
+    customer_id: int | None,
+) -> None:
+    life365_api_gateway = FakeLife365APIGateway()
+    service = ProductsService(FakeProductsGateway(), life365_api_gateway)
+
+    await service.recommend_products(
+        user=_authenticated_user(),
+        order_id=order_id,
+        customer_id=customer_id,
+    )
+
+    assert life365_api_gateway.recommend_requests == [(order_id, customer_id)]
 
 
 @pytest.mark.anyio
@@ -256,7 +294,7 @@ async def test_products_service_get_product_preserves_product_dto_fields() -> No
             last_update=123456,
         )
     )
-    service = ProductsService(gateway)
+    service = _products_service(gateway)
     user = _authenticated_user()
 
     product = await service.get_product(user=user, product_id=7)
@@ -294,7 +332,7 @@ async def test_products_service_get_product_preserves_product_dto_fields() -> No
 @pytest.mark.anyio
 async def test_products_service_get_products_requires_list_permission() -> None:
     gateway = FakeProductsGateway()
-    service = ProductsService(gateway)
+    service = _products_service(gateway)
     user = _authenticated_user(permissions=frozenset({Permission.PRODUCTS_READ}))
 
     with pytest.raises(AuthorizationException, match="Missing required permission"):
@@ -306,7 +344,7 @@ async def test_products_service_get_products_requires_list_permission() -> None:
 @pytest.mark.anyio
 async def test_products_service_get_product_requires_read_permission() -> None:
     gateway = FakeProductsGateway()
-    service = ProductsService(gateway)
+    service = _products_service(gateway)
     user = _authenticated_user(permissions=frozenset({Permission.PRODUCTS_LIST}))
 
     with pytest.raises(AuthorizationException, match="Missing required permission"):
@@ -323,7 +361,7 @@ async def test_products_service_get_products_applies_list_scope() -> None:
             Product(id=2, vendor_code="disabled", isin="disabled", enabled=False),
         ]
     )
-    service = ProductsService(gateway)
+    service = _products_service(gateway)
     user = _authenticated_user(
         permissions=frozenset({Permission.PRODUCTS_LIST}),
         product_access=_product_access_policy(list_scope=ActiveProductsScope()),
@@ -343,7 +381,7 @@ async def test_products_service_get_products_denied_scope_returns_empty_list() -
             Product(id=2, vendor_code="second", isin="second-isin", enabled=True),
         ]
     )
-    service = ProductsService(gateway)
+    service = _products_service(gateway)
     user = _authenticated_user(
         permissions=frozenset({Permission.PRODUCTS_LIST}),
         product_access=_product_access_policy(list_scope=NoProductsScope()),
@@ -366,7 +404,7 @@ async def test_products_service_get_product_applies_read_scope() -> None:
             enabled=True,
         )
     )
-    service = ProductsService(gateway)
+    service = _products_service(gateway)
     user = _authenticated_user(
         permissions=frozenset({Permission.PRODUCTS_READ}),
         product_access=_product_access_policy(
