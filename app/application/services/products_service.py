@@ -4,7 +4,7 @@ from app.application.domain import (
     Permission,
     Product,
 )
-from app.application.dtos import ProductDTO, product_to_dto
+from app.application.dtos import ProductDTO, ProductRecommendation, product_to_dto
 from app.application.exceptions import AuthorizationException, DBException
 from app.application.ports import Life365APIGateway, ProductsGateway
 
@@ -63,7 +63,7 @@ class ProductsService:
         user: AuthenticatedUser,
         order_id: int | None = None,
         customer_id: int | None = None,
-    ) -> object:
+    ) -> list[ProductRecommendation]:
         return await self._life365_api_gateway.recommend_products(
             order_id=order_id, customer_id=customer_id
         )

@@ -1,6 +1,7 @@
 import httpx
 import pytest
 
+from app.application.dtos import ProductRecommendation
 from app.infrastructure.life365_portal_api import Life365PortalAPI
 
 
@@ -21,13 +22,24 @@ async def test_recommend_products_fetches_portal_api(
 
     def handle_request(request: httpx.Request) -> httpx.Response:
         requests.append(request)
-        return httpx.Response(200, json=[])
+        return httpx.Response(
+            200,
+            json=[
+                {
+                    "code": None,
+                    "name": "Recommended product",
+                    "image_url": None,
+                    "description": "Description",
+                    "product_url": "https://b2b.life365.eu/p/-1",
+                }
+            ],
+        )
 
     transport = httpx.MockTransport(handle_request)
     async with httpx.AsyncClient(transport=transport) as client:
         gateway = Life365PortalAPI(http_client=client)
 
-        await gateway.recommend_products(
+        recommendations = await gateway.recommend_products(
             order_id=order_id,
             customer_id=customer_id,
         )
@@ -39,3 +51,12 @@ async def test_recommend_products_fetches_portal_api(
         f"https://b2b.life365.eu/api/upsell/recommend?{expected_query}"
     )
     assert request.headers["Authorization"].startswith("Bearer ")
+    assert recommendations == [
+        ProductRecommendation(
+            code=None,
+            name="Recommended product",
+            image_url=None,
+            description="Description",
+            product_url="https://b2b.life365.eu/p/-1",
+        )
+    ]

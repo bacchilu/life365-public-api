@@ -1,10 +1,47 @@
 import httpx
 
+from app.application.dtos import ProductRecommendation
 from app.application.ports import Life365APIGateway
 
 _RECOMMEND_URL = "https://b2b.life365.eu/api/upsell/recommend"
 _API_TOKEN = "RXfmK6tpf4LDS2WrXB71AxMIpZfy8I3RUjrlpzqCOoQ"
 _TIMEOUT_SECONDS = 10.0
+
+
+def _required_string(payload: dict[object, object], field: str) -> str:
+    value: object | None = payload.get(field)
+    if not isinstance(value, str):
+        raise TypeError(f"Invalid product recommendation field: {field}")
+
+    return value
+
+
+def _optional_string(payload: dict[object, object], field: str) -> str | None:
+    value: object | None = payload.get(field)
+    if value is not None and not isinstance(value, str):
+        raise ValueError(f"Invalid product recommendation field: {field}")
+
+    return value
+
+
+def _parse_recommendation(payload: object) -> ProductRecommendation:
+    if not isinstance(payload, dict):
+        raise TypeError("Invalid product recommendation response")
+
+    return ProductRecommendation(
+        code=_optional_string(payload, "code"),
+        name=_required_string(payload, "name"),
+        image_url=_optional_string(payload, "image_url"),
+        description=_required_string(payload, "description"),
+        product_url=_required_string(payload, "product_url"),
+    )
+
+
+def _parse_recommendations(payload: object) -> list[ProductRecommendation]:
+    if not isinstance(payload, list):
+        raise TypeError("Invalid product recommendations response")
+
+    return [_parse_recommendation(item) for item in payload]
 
 
 class Life365PortalAPI(Life365APIGateway):
@@ -13,7 +50,7 @@ class Life365PortalAPI(Life365APIGateway):
 
     async def recommend_products(
         self, order_id: int | None = None, customer_id: int | None = None
-    ) -> object:
+    ) -> list[ProductRecommendation]:
         params: dict[str, int | None] = (
             {"order_id": order_id}
             if order_id is not None
@@ -28,11 +65,11 @@ class Life365PortalAPI(Life365APIGateway):
 
     async def _request_recommendations(
         self, client: httpx.AsyncClient, params: dict[str, int | None]
-    ) -> object:
+    ) -> list[ProductRecommendation]:
         response: httpx.Response = await client.get(
             _RECOMMEND_URL,
             headers={"Authorization": f"Bearer {_API_TOKEN}"},
             params=params,
         )
         response.raise_for_status()
-        return response.json()
+        return _parse_recommendations(response.json())

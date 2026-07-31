@@ -8,7 +8,7 @@ import pytest
 os.environ.setdefault("DATABASE_URL", "postgresql://localhost/test")
 os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key-with-at-least-32-bytes")
 
-import app.api.products.routes as products_routes
+import app.api.products.composition as products_composition
 from app.api.dependencies import get_auth_service
 from app.application.domain import (
     AllProductCreateScope,
@@ -21,7 +21,7 @@ from app.application.domain import (
     Role,
     TokenSession,
 )
-from app.application.dtos import ProductDTO
+from app.application.dtos import ProductDTO, ProductRecommendation
 from app.application.exceptions import AuthenticationException, AuthorizationException
 from app.main import app
 
@@ -134,9 +134,9 @@ class FakeProductsService:
         user: AuthenticatedUser,
         order_id: int | None = None,
         customer_id: int | None = None,
-    ) -> object:
+    ) -> list[ProductRecommendation]:
         self.recommend_requests.append((user, order_id, customer_id))
-        return {}
+        return []
 
 
 @pytest.fixture(autouse=True)
@@ -164,7 +164,7 @@ def _override_products_service(
     monkeypatch: pytest.MonkeyPatch,
     fake_service: FakeProductsService,
 ) -> None:
-    monkeypatch.setattr(products_routes, "products_service", fake_service)
+    monkeypatch.setattr(products_composition, "products_service", fake_service)
 
 
 def _login_result(

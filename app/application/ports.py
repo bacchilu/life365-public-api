@@ -2,6 +2,7 @@ from collections.abc import Mapping
 from typing import Protocol
 
 from app.application.domain import PrincipalIdentity, Product, TokenSession
+from app.application.dtos import ProductRecommendation
 
 
 class CheckGateway(Protocol):
@@ -19,7 +20,7 @@ class ProductsGateway(Protocol):
 class Life365APIGateway(Protocol):
     async def recommend_products(
         self, order_id: int | None = None, customer_id: int | None = None
-    ) -> object: ...
+    ) -> list[ProductRecommendation]: ...
 
 
 class CredentialsGateway(Protocol):

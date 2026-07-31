@@ -36,6 +36,15 @@ class ProductDTO:
     last_update: int = 0
 
 
+@dataclass(frozen=True, slots=True)
+class ProductRecommendation:
+    code: str | None
+    name: str
+    image_url: str | None
+    description: str
+    product_url: str
+
+
 def product_to_dto(product: Product) -> ProductDTO:
     return ProductDTO(
         id=product.id,

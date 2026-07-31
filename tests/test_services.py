@@ -18,6 +18,7 @@ from app.application.domain import (
     resolve_permissions,
     resolve_product_access_policy,
 )
+from app.application.dtos import ProductRecommendation
 from app.application.exceptions import AuthorizationException
 from app.application.ports import CheckGateway, Life365APIGateway, ProductsGateway
 from app.application.services.health_service import HealthService
@@ -80,9 +81,9 @@ class FakeLife365APIGateway(Life365APIGateway):
         self,
         order_id: int | None = None,
         customer_id: int | None = None,
-    ) -> object:
+    ) -> list[ProductRecommendation]:
         self.recommend_requests.append((order_id, customer_id))
-        return {}
+        return []
 
 
 def _products_service(gateway: ProductsGateway) -> ProductsService:
