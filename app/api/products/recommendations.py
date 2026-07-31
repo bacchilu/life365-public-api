@@ -1,6 +1,7 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel
 
 from app.api.dependencies import get_current_user
 from app.application.domain import AuthenticatedUser
@@ -11,16 +12,24 @@ from . import composition
 router: APIRouter = APIRouter(tags=["products"])
 
 
+class ProductRecommendationResponse(BaseModel):
+    code: str | None
+    name: str
+    image_url: str | None
+    description: str
+    product_url: str
+
+
 @router.get(
     "/products/recommend",
     summary="Recommend products",
-    response_model=list[ProductRecommendation],
+    response_model=list[ProductRecommendationResponse],
 )
 async def recommend_products(
     current_user: Annotated[AuthenticatedUser, Depends(get_current_user)],
     order_id: Annotated[int | None, Query()] = None,
     customer_id: Annotated[int | None, Query()] = None,
-) -> list[ProductRecommendation]:
+) -> list[ProductRecommendationResponse]:
     """
     Return product recommendations for an authenticated request context.
 
@@ -47,8 +56,20 @@ async def recommend_products(
             detail="order_id/customer_id must be a positive integer",
         )
 
-    return await composition.products_service.recommend_products(
+    recommendations: list[
+        ProductRecommendation
+    ] = await composition.products_service.recommend_products(
         user=current_user,
         order_id=order_id,
         customer_id=customer_id,
     )
+    return [
+        ProductRecommendationResponse(
+            code=recommendation.code,
+            name=recommendation.name,
+            image_url=recommendation.image_url,
+            description=recommendation.description,
+            product_url=recommendation.product_url,
+        )
+        for recommendation in recommendations
+    ]
