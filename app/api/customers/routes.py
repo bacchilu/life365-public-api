@@ -5,10 +5,15 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
 from app.api.dependencies import get_current_user
-from app.application.domain import AuthenticatedUser, Role
+from app.application.domain import AuthenticatedUser, Customer, Role
 from app.application.exceptions import AuthorizationException
+from app.application.ports import CustomersGateway
+from app.application.services.customer_service import CustomerService
+from app.infrastructure.data_mapper import CustomersDataMapper
 
 router: APIRouter = APIRouter(tags=["customers"])
+customers_gateway: CustomersGateway = CustomersDataMapper()
+customer_service: CustomerService = CustomerService(customers_gateway)
 
 
 class CustomerResponse(BaseModel):
@@ -21,6 +26,20 @@ class CustomerResponse(BaseModel):
     extra_data: dict[str, Any] = Field(default_factory=dict)
     parameters: dict[str, Any] = Field(default_factory=dict)
     last_login_date: datetime | None = None
+
+
+def _customer_to_response(customer: Customer) -> CustomerResponse:
+    return CustomerResponse(
+        id=customer.id,
+        login=customer.login,
+        email=customer.email,
+        business_name=customer.business_name,
+        business_contact_name=customer.business_contact_name,
+        preferred_language=customer.preferred_language,
+        extra_data=customer.extra_data,
+        parameters=customer.parameters,
+        last_login_date=customer.last_login_date,
+    )
 
 
 def _require_admin(user: AuthenticatedUser) -> None:
@@ -51,21 +70,8 @@ async def get_customers(
             status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)
         ) from exc
 
-    return [
-        CustomerResponse(
-            id=1,
-            login="customer-login",
-            email="customer@example.com",
-            business_name="Example Business",
-            business_contact_name="Example Contact",
-            preferred_language="it",
-        ),
-        CustomerResponse(
-            id=2,
-            login="second-customer",
-            email="second.customer@example.com",
-            business_name="Second Business",
-            business_contact_name="Second Contact",
-            preferred_language="en",
-        ),
-    ]
+    customers: list[Customer] = await customer_service.get_customers(
+        limit=limit,
+        offset=offset,
+    )
+    return [_customer_to_response(customer) for customer in customers]

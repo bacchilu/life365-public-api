@@ -4,6 +4,7 @@ __all__ = [
     "AllProductsScope",
     "AuthorizationService",
     "AuthenticatedUser",
+    "Customer",
     "LoginResult",
     "NoProductCreateScope",
     "NoProductsScope",
@@ -52,5 +53,6 @@ from app.application.domain.authorization import (
     resolve_permissions,
     resolve_product_access_policy,
 )
+from app.application.domain.customer import Customer
 from app.application.domain.identity import PrincipalIdentity, PrincipalType, Role
 from app.application.domain.product import Product

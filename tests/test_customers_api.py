@@ -89,31 +89,25 @@ def _assert_customer_response_shape(data: dict[str, object]) -> None:
 
 
 @pytest.mark.anyio
-async def test_list_customers_returns_fixed_customer_data() -> None:
+async def test_list_customers_returns_paginated_customer_data() -> None:
     fake_auth_service = FakeAuthService()
     _override_auth_service(fake_auth_service)
 
     async with _client() as client:
         response = await client.get(
-            "/customers?limit=2&offset=5",
+            "/customers?limit=1&offset=1",
             headers={"Authorization": "Bearer access-token"},
         )
 
     assert response.status_code == 200
     data = response.json()
-    assert len(data) == 2
+    assert len(data) == 1
     _assert_customer_response_shape(data[0])
-    _assert_customer_response_shape(data[1])
-    assert data[0]["id"] == 1
-    assert data[0]["login"] == "customer-login"
-    assert data[0]["email"] == "customer@example.com"
-    assert data[1]["id"] == 2
-    assert data[1]["login"] == "second-customer"
-    assert data[1]["email"] == "second.customer@example.com"
+    assert data[0]["id"] == 2
+    assert data[0]["login"] == "second-customer"
+    assert data[0]["email"] == "second.customer@example.com"
     assert "pass" not in data[0]
     assert "password" not in data[0]
-    assert "pass" not in data[1]
-    assert "password" not in data[1]
     assert fake_auth_service.validated_tokens == ["access-token"]
 
 

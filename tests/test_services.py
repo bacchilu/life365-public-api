@@ -6,6 +6,7 @@ from app.application.domain import (
     ActiveProductsScope,
     AllProductsScope,
     AuthenticatedUser,
+    Customer,
     NoProductCreateScope,
     NoProductsScope,
     OwnerProductsScope,
@@ -20,7 +21,13 @@ from app.application.domain import (
 )
 from app.application.dtos import ProductRecommendation
 from app.application.exceptions import AuthorizationException
-from app.application.ports import CheckGateway, Life365APIGateway, ProductsGateway
+from app.application.ports import (
+    CheckGateway,
+    CustomersGateway,
+    Life365APIGateway,
+    ProductsGateway,
+)
+from app.application.services.customer_service import CustomerService
 from app.application.services.health_service import HealthService
 from app.application.services.products_service import ProductsService
 
@@ -28,6 +35,17 @@ from app.application.services.products_service import ProductsService
 class FakeCheckGateway(CheckGateway):
     async def check_db(self) -> bool:
         return True
+
+
+class FakeCustomersGateway(CustomersGateway):
+    def __init__(self) -> None:
+        self.requests: list[tuple[int, int]] = []
+
+    async def get_customers(
+        self, limit: int = 100, offset: int = 0
+    ) -> list[Customer]:
+        self.requests.append((limit, offset))
+        return [Customer(id=7, login="customer", email="customer@example.com")]
 
 
 class FakeProductsGateway(ProductsGateway):
@@ -204,6 +222,19 @@ async def test_health_service_uses_check_gateway() -> None:
 
     assert service.health() is True
     assert await service.check_db() is True
+
+
+@pytest.mark.anyio
+async def test_customer_service_uses_customers_gateway() -> None:
+    gateway = FakeCustomersGateway()
+    service = CustomerService(gateway)
+
+    customers = await service.get_customers(limit=25, offset=5)
+
+    assert customers == [
+        Customer(id=7, login="customer", email="customer@example.com")
+    ]
+    assert gateway.requests == [(25, 5)]
 
 
 @pytest.mark.anyio

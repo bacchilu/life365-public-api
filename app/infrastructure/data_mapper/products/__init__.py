@@ -4,10 +4,10 @@ from app.application.domain import Product
 from app.application.ports import ProductsGateway
 from app.infrastructure.data_mapper.connection import get_cursor_context
 
-from .product import get_product as execute_get_product
 from .product import get_product
-from .products import get_products as execute_get_products
+from .product import get_product as execute_get_product
 from .products import get_products
+from .products import get_products as execute_get_products
 
 
 class ProductsDataMapper(ProductsGateway):

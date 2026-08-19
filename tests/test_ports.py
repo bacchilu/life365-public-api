@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from app.application.domain import (
+    Customer,
     PrincipalIdentity,
     PrincipalType,
     Product,
@@ -12,6 +13,7 @@ from app.application.domain import (
 from app.application.ports import (
     CheckGateway,
     CredentialsGateway,
+    CustomersGateway,
     Life365APIGateway,
     ProductsGateway,
     TokenSessionGateway,
@@ -30,6 +32,13 @@ class FakeProductsGateway:
 
     async def get_product(self, product_id: int) -> Product:
         return Product(id=product_id, vendor_code="vendor", isin="isin")
+
+
+class FakeCustomersGateway:
+    async def get_customers(
+        self, limit: int = 100, offset: int = 0
+    ) -> list[Customer]:
+        return [Customer(id=1, login="customer", email="customer@example.com")]
 
 
 class FakeCredentialsGateway(CredentialsGateway):
@@ -80,6 +89,10 @@ def _as_check_gateway(gateway: CheckGateway) -> CheckGateway:
 
 
 def _as_products_gateway(gateway: ProductsGateway) -> ProductsGateway:
+    return gateway
+
+
+def _as_customers_gateway(gateway: CustomersGateway) -> CustomersGateway:
     return gateway
 
 
@@ -160,6 +173,15 @@ async def test_products_gateway_contract_methods() -> None:
         vendor_code="vendor",
         isin="isin",
     )
+
+
+@pytest.mark.anyio
+async def test_customers_gateway_contract_method() -> None:
+    gateway: CustomersGateway = _as_customers_gateway(FakeCustomersGateway())
+
+    assert await gateway.get_customers(limit=10, offset=5) == [
+        Customer(id=1, login="customer", email="customer@example.com")
+    ]
 
 
 def test_life365_portal_api_implements_gateway() -> None:
