@@ -7,6 +7,7 @@ import pytest
 os.environ.setdefault("DATABASE_URL", "postgresql://localhost/test")
 os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key-with-at-least-32-bytes")
 
+from app.api.customers import routes as customer_routes
 from app.api.dependencies import get_auth_service
 from app.application.domain import (
     AuthenticatedUser,
@@ -16,6 +17,8 @@ from app.application.domain import (
     resolve_product_access_policy,
 )
 from app.application.exceptions import AuthenticationException
+from app.application.services.customer_service import CustomerService
+from app.infrastructure.data_mapper import InMemoryCustomersDataMapper
 from app.main import app
 
 
@@ -39,8 +42,13 @@ class FakeAuthService:
 
 
 @pytest.fixture(autouse=True)
-def dependency_overrides() -> Iterator[None]:
+def dependency_overrides(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     app.dependency_overrides.clear()
+    monkeypatch.setattr(
+        customer_routes,
+        "customer_service",
+        CustomerService(InMemoryCustomersDataMapper()),
+    )
     yield
     app.dependency_overrides.clear()
 

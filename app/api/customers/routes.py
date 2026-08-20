@@ -9,10 +9,10 @@ from app.application.domain import AuthenticatedUser, Customer, Role
 from app.application.exceptions import AuthorizationException
 from app.application.ports import CustomersGateway
 from app.application.services.customer_service import CustomerService
-from app.infrastructure.data_mapper import CustomersDataMapper
+from app.infrastructure.data_mapper import DATABASE_URL, PostgreSQLCustomersDataMapper
 
 router: APIRouter = APIRouter(tags=["customers"])
-customers_gateway: CustomersGateway = CustomersDataMapper()
+customers_gateway: CustomersGateway = PostgreSQLCustomersDataMapper(DATABASE_URL)
 customer_service: CustomerService = CustomerService(customers_gateway)
 
 
@@ -60,8 +60,8 @@ async def get_customers(
     """
     Retrieve a paginated list of customers.
 
-    This endpoint currently returns fixed placeholder data. The application
-    service and data mapper implementation will replace this stub later.
+    Customer records are read from PostgreSQL and ordered by their unique ID.
+    Use `limit` to control the page size and `offset` to skip records.
     """
     try:
         _require_admin(current_user)
