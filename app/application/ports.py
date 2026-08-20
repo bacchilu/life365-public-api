@@ -1,7 +1,13 @@
 from collections.abc import Mapping
 from typing import Protocol
 
-from app.application.domain import Customer, PrincipalIdentity, Product, TokenSession
+from app.application.domain import (
+    Customer,
+    Order,
+    PrincipalIdentity,
+    Product,
+    TokenSession,
+)
 from app.application.dtos import ProductRecommendation
 
 
@@ -21,6 +27,12 @@ class CustomersGateway(Protocol):
     async def get_customers(
         self, limit: int = 100, offset: int = 0
     ) -> list[Customer]: ...
+
+
+class OrdersGateway(Protocol):
+    async def get_orders(
+        self, limit: int = 100, offset: int = 0
+    ) -> list[Order]: ...
 
 
 class Life365APIGateway(Protocol):

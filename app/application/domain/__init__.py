@@ -8,6 +8,8 @@ __all__ = [
     "LoginResult",
     "NoProductCreateScope",
     "NoProductsScope",
+    "Order",
+    "OrderDetail",
     "OwnerProductCreateScope",
     "OwnerProductsScope",
     "Permission",
@@ -55,4 +57,5 @@ from app.application.domain.authorization import (
 )
 from app.application.domain.customer import Customer
 from app.application.domain.identity import PrincipalIdentity, PrincipalType, Role
+from app.application.domain.order import Order, OrderDetail
 from app.application.domain.product import Product

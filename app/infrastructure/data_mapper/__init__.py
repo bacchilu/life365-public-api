@@ -3,8 +3,10 @@ __all__ = [
     "CredentialsDataMapper",
     "DATABASE_URL",
     "InMemoryCustomersDataMapper",
+    "InMemoryOrdersDataMapper",
     "InMemoryTokenSessionDataMapper",
     "PostgreSQLCustomersDataMapper",
+    "PostgreSQLOrdersDataMapper",
     "ProductsDataMapper",
     "SQLiteTokenSessionDataMapper",
     "get_cursor_context",
@@ -20,5 +22,9 @@ from app.infrastructure.data_mapper.connection import DATABASE_URL, get_cursor_c
 from app.infrastructure.data_mapper.customers import (
     InMemoryCustomersDataMapper,
     PostgreSQLCustomersDataMapper,
+)
+from app.infrastructure.data_mapper.orders import (
+    InMemoryOrdersDataMapper,
+    PostgreSQLOrdersDataMapper,
 )
 from app.infrastructure.data_mapper.products import ProductsDataMapper
