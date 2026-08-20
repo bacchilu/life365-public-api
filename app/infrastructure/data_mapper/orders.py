@@ -9,7 +9,11 @@ from app.application.domain import Order, OrderDetail
 from app.application.ports import OrdersGateway
 from app.infrastructure.data_mapper.connection import get_cursor_context
 
-FINAL_LOGISTIC_STATE = "DELIVERED"
+QUALIFYING_LOGISTIC_STATES: tuple[str, ...] = (
+    "CONFIRMED",
+    "DELIVERED",
+    "UNDELIVERABLE",
+)
 
 ORDERS_QUERY = sql.SQL(
     """
@@ -22,7 +26,7 @@ ORDERS_QUERY = sql.SQL(
         total,
         customer_reference
     FROM public.orders
-    WHERE logistic_state = %s
+    WHERE logistic_state = ANY(%s)
     ORDER BY id DESC
     LIMIT %s OFFSET %s
     """
@@ -81,7 +85,7 @@ def _order_from_row(row: TupleRow, details: tuple[OrderDetail, ...]) -> Order:
 async def _get_orders(
     cur: psycopg.AsyncCursor[TupleRow], limit: int, offset: int
 ) -> list[Order]:
-    await cur.execute(ORDERS_QUERY, (FINAL_LOGISTIC_STATE, limit, offset))
+    await cur.execute(ORDERS_QUERY, (list(QUALIFYING_LOGISTIC_STATES), limit, offset))
     order_rows: list[TupleRow] = await cur.fetchall()
 
     if not order_rows:

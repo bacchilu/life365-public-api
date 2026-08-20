@@ -64,7 +64,7 @@ def _order_to_response(order: Order) -> OrderResponse:
 
 @router.get(
     "/orders",
-    summary="List final orders",
+    summary="List qualifying orders",
     response_model=list[OrderResponse],
 )
 async def get_orders(
@@ -73,11 +73,12 @@ async def get_orders(
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[OrderResponse]:
     """
-    Retrieve a paginated list of delivered orders and their detail lines.
+    Retrieve a paginated list of qualifying orders and their detail lines.
 
     Orders are read from PostgreSQL and ordered from newest to oldest by ID.
-    Only orders whose current logistic state is `DELIVERED` are returned;
-    financial state remains independent and may be `PAID` or `UNPAID`.
+    Only orders whose current logistic state is `CONFIRMED`, `DELIVERED`, or
+    `UNDELIVERABLE` are returned. No date or lookback filter is applied.
+    Financial state remains independent and may be `PAID` or `UNPAID`.
     """
     orders: list[Order] = await order_service.get_orders(limit=limit, offset=offset)
     return [_order_to_response(order) for order in orders]

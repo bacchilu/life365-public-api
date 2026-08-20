@@ -12,7 +12,10 @@ from app.infrastructure.data_mapper import (
     InMemoryOrdersDataMapper,
     PostgreSQLOrdersDataMapper,
 )
-from app.infrastructure.data_mapper.orders import FINAL_LOGISTIC_STATE, _get_orders
+from app.infrastructure.data_mapper.orders import (
+    QUALIFYING_LOGISTIC_STATES,
+    _get_orders,
+)
 
 
 class FakeCursor:
@@ -87,7 +90,7 @@ async def test_postgresql_order_query_maps_headers_and_nested_details() -> None:
     )
 
     assert cursor.parameters == [
-        (FINAL_LOGISTIC_STATE, 25, 50),
+        (list(QUALIFYING_LOGISTIC_STATES), 25, 50),
         ([42],),
     ]
     assert orders == [
