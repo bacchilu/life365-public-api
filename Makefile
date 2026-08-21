@@ -24,7 +24,8 @@ docker-network:
 	docker network inspect $(SHARED_DOCKER_NETWORK) >/dev/null 2>&1 || docker network create $(SHARED_DOCKER_NETWORK)
 
 docker-dev-up:
-	$(DOCKER_COMPOSE) --profile dev run --rm --service-ports --build api-dev
+	@trap '$(DOCKER_COMPOSE) --profile dev down' EXIT; \
+		$(DOCKER_COMPOSE) --profile dev up --build
 
 docker-dev-down:
 	$(DOCKER_COMPOSE) --profile dev down

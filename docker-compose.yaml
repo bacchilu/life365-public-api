@@ -1,10 +1,4 @@
 x-api: &api
-  build:
-    context: .
-    dockerfile: Dockerfile
-    args:
-      USER_ID: "${USER_ID:-1000}"
-      GROUP_ID: "${GROUP_ID:-1000}"
   image: life365-public-api:latest
   env_file:
     - .env
@@ -15,6 +9,12 @@ x-api: &api
 services:
   api-dev:
     <<: *api
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        USER_ID: "${USER_ID:-1000}"
+        GROUP_ID: "${GROUP_ID:-1000}"
     profiles:
       - dev
     ports:
@@ -33,6 +33,12 @@ services:
 
   life365-public-api:
     <<: *api
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        USER_ID: "${USER_ID:-1000}"
+        GROUP_ID: "${GROUP_ID:-1000}"
     profiles:
       - prod
     expose:
@@ -41,6 +47,20 @@ services:
       - ./data:/data
     networks:
       - life365-shared
+    restart: unless-stopped
+
+  scheduler:
+    <<: *api
+    profiles:
+      - dev
+      - prod
+    environment:
+      TZ: UTC
+    volumes:
+      - ./data:/data
+    command:
+      - /usr/local/bin/supercronic
+      - /app/crons/jobs.cron
     restart: unless-stopped
 
 networks:

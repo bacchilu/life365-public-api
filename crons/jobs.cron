@@ -1,0 +1,1 @@
+*/5 * * * * cd /app && /usr/local/bin/python -u crons/health.py
