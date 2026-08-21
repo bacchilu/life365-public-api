@@ -1,1 +1,2 @@
 */5 * * * * cd /app && /usr/local/bin/python -u crons/health.py
+0 0 * * * cd /app && /usr/local/bin/python -u crons/collect_inactive_customers.py
