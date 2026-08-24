@@ -105,10 +105,7 @@ def main() -> None:
     load_dotenv()
     connection_string: str | None = os.environ.get("DATABASE_URL")
     output_path = Path(
-        os.environ.get(
-            "INACTIVE_CUSTOMERS_OUTPUT_PATH",
-            str(DEFAULT_OUTPUT_PATH),
-        )
+        os.environ.get("INACTIVE_CUSTOMERS_OUTPUT_PATH", str(DEFAULT_OUTPUT_PATH))
     )
 
     if connection_string is None:
