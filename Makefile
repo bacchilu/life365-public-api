@@ -24,14 +24,16 @@ docker-network:
 	docker network inspect $(SHARED_DOCKER_NETWORK) >/dev/null 2>&1 || docker network create $(SHARED_DOCKER_NETWORK)
 
 docker-dev-up:
+	$(DOCKER_COMPOSE) --profile dev build api-dev
 	@trap '$(DOCKER_COMPOSE) --profile dev down' EXIT; \
-		$(DOCKER_COMPOSE) --profile dev up --build
+		$(DOCKER_COMPOSE) --profile dev up --no-build --pull never
 
 docker-dev-down:
 	$(DOCKER_COMPOSE) --profile dev down
 
 docker-prod-up: docker-network
-	$(DOCKER_COMPOSE) --profile prod up --build --detach
+	$(DOCKER_COMPOSE) --profile prod build life365-public-api
+	$(DOCKER_COMPOSE) --profile prod up --detach --no-build --pull never
 
 docker-prod-down:
 	$(DOCKER_COMPOSE) --profile prod down
