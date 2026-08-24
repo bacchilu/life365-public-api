@@ -59,6 +59,7 @@ services:
       - dev
       - prod
     environment:
+      INACTIVE_CUSTOMERS_OUTPUT_PATH: /data/inactive-customers.json
       TZ: UTC
     init: true
     volumes:
