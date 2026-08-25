@@ -1,5 +1,8 @@
+import fcntl
 import json
 import os
+from collections.abc import Generator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -44,6 +47,23 @@ INACTIVE_CUSTOMERS_QUERY = sql.SQL(
 class InactiveCustomer:
     id: int
     last_order_date: datetime
+
+
+@contextmanager
+def acquire_job_lock(lock_path: Path) -> Generator[bool]:
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with lock_path.open("a", encoding="utf-8") as lock_file:
+        try:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            yield False
+            return
+
+        try:
+            yield True
+        finally:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
 
 def collect_inactive_customers(connection_string: str) -> list[InactiveCustomer]:
@@ -111,19 +131,31 @@ def main() -> None:
     if connection_string is None:
         raise RuntimeError("DATABASE_URL is not configured")
 
-    print("Starting inactive customer collection", flush=True)
-    customers: list[InactiveCustomer] = collect_inactive_customers(connection_string)
-    write_inactive_customers(
-        output_path,
-        customers,
-        generated_at=datetime.now(timezone.utc),
-    )
+    lock_path = output_path.with_suffix(".lock")
+    with acquire_job_lock(lock_path) as acquired:
+        if not acquired:
+            print(
+                "Inactive customer collection is already running; "
+                "skipping this execution",
+                flush=True,
+            )
+            return
 
-    print(
-        "Inactive customer collection completed successfully: "
-        f"{len(customers)} customers written to {output_path}",
-        flush=True,
-    )
+        print("Starting inactive customer collection", flush=True)
+        customers: list[InactiveCustomer] = collect_inactive_customers(
+            connection_string
+        )
+        write_inactive_customers(
+            output_path,
+            customers,
+            generated_at=datetime.now(timezone.utc),
+        )
+
+        print(
+            "Inactive customer collection completed successfully: "
+            f"{len(customers)} customers written to {output_path}",
+            flush=True,
+        )
 
 
 if __name__ == "__main__":

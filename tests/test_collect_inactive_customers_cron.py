@@ -4,8 +4,22 @@ from pathlib import Path
 
 from crons.collect_inactive_customers import (
     InactiveCustomer,
+    acquire_job_lock,
     write_inactive_customers,
 )
+
+
+def test_job_lock_prevents_overlapping_execution(tmp_path: Path) -> None:
+    lock_path = tmp_path / "inactive-customers.lock"
+
+    with acquire_job_lock(lock_path) as first_acquired:
+        assert first_acquired is True
+
+        with acquire_job_lock(lock_path) as second_acquired:
+            assert second_acquired is False
+
+    with acquire_job_lock(lock_path) as acquired_after_release:
+        assert acquired_after_release is True
 
 
 def test_write_inactive_customers_creates_json_snapshot(tmp_path: Path) -> None:
