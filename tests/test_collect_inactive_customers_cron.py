@@ -2,11 +2,9 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from crons.collect_inactive_customers import (
-    InactiveCustomer,
-    acquire_job_lock,
-    write_inactive_customers,
-)
+from crons.inactive_customers.locking import acquire_job_lock
+from crons.inactive_customers.model import InactiveCustomer
+from crons.inactive_customers.snapshot import write_inactive_customers
 
 
 def test_job_lock_prevents_overlapping_execution(tmp_path: Path) -> None:
