@@ -7,20 +7,34 @@ from dotenv import load_dotenv
 from crons.inactive_customers.database import collect_inactive_customers
 from crons.inactive_customers.locking import acquire_job_lock
 from crons.inactive_customers.model import InactiveCustomer
+from crons.inactive_customers.salesforce import request_salesforce_access_token
 from crons.inactive_customers.snapshot import write_inactive_customers
 
 DEFAULT_OUTPUT_PATH: Path = Path("data/inactive-customers.json")
 
 
+def required_environment_variable(name: str) -> str:
+    value: str | None = os.environ.get(name)
+    if not value:
+        raise RuntimeError(f"{name} is not configured")
+    return value
+
+
 def main() -> None:
     load_dotenv()
-    connection_string: str | None = os.environ.get("DATABASE_URL")
+    connection_string: str = required_environment_variable("DATABASE_URL")
+    salesforce_token_url: str = required_environment_variable(
+        "SALESFORCE_TOKEN_URL"
+    )
+    salesforce_client_id: str = required_environment_variable(
+        "SALESFORCE_CLIENT_ID"
+    )
+    salesforce_client_secret: str = required_environment_variable(
+        "SALESFORCE_CLIENT_SECRET"
+    )
     output_path = Path(
         os.environ.get("INACTIVE_CUSTOMERS_OUTPUT_PATH", str(DEFAULT_OUTPUT_PATH))
     )
-
-    if connection_string is None:
-        raise RuntimeError("DATABASE_URL is not configured")
 
     lock_path = output_path.with_suffix(".lock")
     with acquire_job_lock(lock_path) as acquired:
@@ -32,7 +46,7 @@ def main() -> None:
             )
             return
 
-        print("Starting inactive customer collection", flush=True)
+        print("Starting phase 1: collect inactive customers", flush=True)
         customers: list[InactiveCustomer] = collect_inactive_customers(
             connection_string
         )
@@ -43,10 +57,18 @@ def main() -> None:
         )
 
         print(
-            "Inactive customer collection completed successfully: "
+            "Completed phase 1: "
             f"{len(customers)} customers written to {output_path}",
             flush=True,
         )
+
+        print("Starting phase 2: request Salesforce access token", flush=True)
+        request_salesforce_access_token(
+            salesforce_token_url,
+            salesforce_client_id,
+            salesforce_client_secret,
+        )
+        print("Salesforce access token acquired successfully", flush=True)
 
 
 if __name__ == "__main__":
