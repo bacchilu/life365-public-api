@@ -7,8 +7,10 @@ from dotenv import load_dotenv
 
 from crons.inactive_customers.database import collect_inactive_customers
 from crons.inactive_customers.locking import acquire_job_lock
+from crons.inactive_customers.mock_salesforce import MockSalesforceGateway
 from crons.inactive_customers.model import InactiveCustomer
 from crons.inactive_customers.salesforce import request_salesforce_access_token
+from crons.inactive_customers.salesforce_gateway import SalesforceGateway
 from crons.inactive_customers.snapshot import write_inactive_customers
 
 DEFAULT_OUTPUT_PATH: Path = Path("data/inactive-customers.json")
@@ -64,14 +66,26 @@ async def run() -> None:
             flush=True,
         )
 
-        print("Starting phase 2: request Salesforce access token", flush=True)
+        print(
+            "Starting phase 2: synchronize inactive customers with Salesforce",
+            flush=True,
+        )
         salesforce_access_token: str = await request_salesforce_access_token(
             salesforce_token_url,
             salesforce_client_id,
             salesforce_client_secret,
         )
-        if salesforce_access_token:
-            print("Salesforce access token acquired successfully", flush=True)
+        print("Salesforce access token acquired successfully", flush=True)
+
+        salesforce_gateway: SalesforceGateway = MockSalesforceGateway()
+        await salesforce_gateway.sync_inactive_customers(
+            customers,
+            salesforce_access_token,
+        )
+        print(
+            "Completed phase 2: inactive customer synchronization completed",
+            flush=True,
+        )
 
 
 def main() -> None:
