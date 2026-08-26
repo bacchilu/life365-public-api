@@ -1,4 +1,4 @@
-.PHONY: update build clean run codex clean-all \
+.PHONY: update build clean run test codex clean-all \
 	docker-network docker-dev-up docker-dev-down docker-prod-up docker-prod-down
 
 HOST_USER_ID := $(shell id -u)
@@ -19,6 +19,9 @@ build:
 
 run:
 	./.venv/bin/fastapi dev app/main.py
+
+test:
+	./.venv/bin/pytest
 
 docker-network:
 	docker network inspect $(SHARED_DOCKER_NETWORK) >/dev/null 2>&1 || docker network create $(SHARED_DOCKER_NETWORK)
