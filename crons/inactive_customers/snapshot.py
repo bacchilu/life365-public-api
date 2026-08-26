@@ -1,5 +1,6 @@
 import json
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
@@ -8,6 +9,22 @@ from crons.inactive_customers.model import (
     CustomerSyncRun,
     CustomerSyncStatus,
 )
+
+
+def build_report_paths(
+    base_output_path: Path,
+    completed_at: datetime,
+) -> tuple[Path, Path]:
+    timestamp: str = completed_at.astimezone(timezone.utc).strftime(
+        "%Y%m%dT%H%M%SZ"
+    )
+    timestamped_path = base_output_path.with_name(
+        f"{base_output_path.stem}-{timestamp}{base_output_path.suffix}"
+    )
+    latest_path = base_output_path.with_name(
+        f"{base_output_path.stem}-latest{base_output_path.suffix}"
+    )
+    return timestamped_path, latest_path
 
 
 def write_inactive_customers(

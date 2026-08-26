@@ -9,7 +9,10 @@ from crons.inactive_customers.model import (
     CustomerSyncStatus,
     InactiveCustomer,
 )
-from crons.inactive_customers.snapshot import write_inactive_customers
+from crons.inactive_customers.snapshot import (
+    build_report_paths,
+    write_inactive_customers,
+)
 
 
 def test_job_lock_prevents_overlapping_execution(tmp_path: Path) -> None:
@@ -91,3 +94,15 @@ def test_write_inactive_customers_creates_json_snapshot(tmp_path: Path) -> None:
         ],
     }
     assert list(output_path.parent.glob("*.tmp")) == []
+
+
+def test_build_report_paths_uses_utc_completion_timestamp() -> None:
+    report_path, latest_path = build_report_paths(
+        Path("data/inactive-customers.json"),
+        datetime(2026, 8, 26, 12, 30, 45, tzinfo=timezone.utc),
+    )
+
+    assert report_path == Path(
+        "data/inactive-customers-20260826T123045Z.json"
+    )
+    assert latest_path == Path("data/inactive-customers-latest.json")

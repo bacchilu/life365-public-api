@@ -7,7 +7,10 @@ from crons.inactive_customers.mock_salesforce import MockSalesforceGateway
 from crons.inactive_customers.model import InactiveCustomer
 from crons.inactive_customers.salesforce import request_salesforce_access_token
 from crons.inactive_customers.salesforce_gateway import SalesforceGateway
-from crons.inactive_customers.snapshot import write_inactive_customers
+from crons.inactive_customers.snapshot import (
+    build_report_paths,
+    write_inactive_customers,
+)
 from crons.inactive_customers.sync_store import (
     complete_sync_run,
     create_sync_database,
@@ -81,9 +84,14 @@ async def _execute_phase_two(
     )
 
     run, records = load_sync_run(database_path)
-    write_inactive_customers(output_path, run, records)
+    if run.completed_at is None:
+        raise RuntimeError("Completed sync run does not have a completion timestamp")
+    report_path, latest_path = build_report_paths(output_path, run.completed_at)
+    write_inactive_customers(report_path, run, records)
+    write_inactive_customers(latest_path, run, records)
     remove_sync_database(database_path)
-    print(f"Final customer sync report written to {output_path}", flush=True)
+    print(f"Final customer sync report written to {report_path}", flush=True)
+    print(f"Latest customer sync report written to {latest_path}", flush=True)
 
 
 async def _request_access_token() -> str:

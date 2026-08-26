@@ -57,6 +57,21 @@ class InterruptedSalesforceGateway(SalesforceGateway):
         raise RuntimeError("Salesforce connection failed")
 
 
+def _generated_report_paths(base_output_path: Path) -> tuple[Path, Path]:
+    latest_path = base_output_path.with_name(
+        f"{base_output_path.stem}-latest{base_output_path.suffix}"
+    )
+    timestamped_paths = [
+        path
+        for path in base_output_path.parent.glob(
+            f"{base_output_path.stem}-*{base_output_path.suffix}"
+        )
+        if path != latest_path
+    ]
+    assert len(timestamped_paths) == 1
+    return timestamped_paths[0], latest_path
+
+
 @pytest.mark.anyio
 async def test_workflow_creates_report_and_removes_database(
     tmp_path: Path,
@@ -79,7 +94,12 @@ async def test_workflow_creates_report_and_removes_database(
     collect.assert_awaited_once_with("postgresql://test")
     assert gateway.received_customers == customers
     assert not output_path.with_suffix(".sqlite3").exists()
-    payload = json.loads(output_path.read_text(encoding="utf-8"))
+    report_path, latest_path = _generated_report_paths(output_path)
+    assert report_path.read_text(encoding="utf-8") == latest_path.read_text(
+        encoding="utf-8"
+    )
+    assert not output_path.exists()
+    payload = json.loads(latest_path.read_text(encoding="utf-8"))
     assert payload["succeeded_count"] == 1
     assert payload["failed_count"] == 0
 
@@ -121,7 +141,9 @@ async def test_workflow_resumes_pending_customers_from_database(
 
     collect.assert_not_awaited()
     assert [customer.id for customer in gateway.received_customers] == [84]
-    payload = json.loads(output_path.read_text(encoding="utf-8"))
+    report_path, latest_path = _generated_report_paths(output_path)
+    assert report_path.exists()
+    payload = json.loads(latest_path.read_text(encoding="utf-8"))
     assert payload["succeeded_count"] == 2
     assert payload["failed_count"] == 0
     assert not database_path.exists()
