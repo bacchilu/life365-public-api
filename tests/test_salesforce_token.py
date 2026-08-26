@@ -1,11 +1,13 @@
 from urllib.parse import parse_qs
 
 import httpx
+import pytest
 
 from crons.inactive_customers.salesforce import request_salesforce_access_token
 
 
-def test_request_salesforce_access_token() -> None:
+@pytest.mark.anyio
+async def test_request_salesforce_access_token() -> None:
     def handle_request(request: httpx.Request) -> httpx.Response:
         assert request.method == "POST"
         assert request.url == httpx.URL(
@@ -22,8 +24,8 @@ def test_request_salesforce_access_token() -> None:
         return httpx.Response(200, json={"access_token": "test-access-token"})
 
     transport = httpx.MockTransport(handle_request)
-    with httpx.Client(transport=transport) as client:
-        access_token = request_salesforce_access_token(
+    async with httpx.AsyncClient(transport=transport) as client:
+        access_token = await request_salesforce_access_token(
             "https://example.my.salesforce.com/services/oauth2/token",
             "test-client-id",
             "test-client-secret",

@@ -1,3 +1,4 @@
+import asyncio
 import os
 from datetime import datetime, timezone
 from pathlib import Path
@@ -20,7 +21,7 @@ def required_environment_variable(name: str) -> str:
     return value
 
 
-def main() -> None:
+async def run() -> None:
     load_dotenv()
     connection_string: str = required_environment_variable("DATABASE_URL")
     salesforce_token_url: str = required_environment_variable(
@@ -47,13 +48,14 @@ def main() -> None:
             return
 
         print("Starting phase 1: collect inactive customers", flush=True)
-        customers: list[InactiveCustomer] = collect_inactive_customers(
+        customers: list[InactiveCustomer] = await collect_inactive_customers(
             connection_string
         )
-        write_inactive_customers(
+        await asyncio.to_thread(
+            write_inactive_customers,
             output_path,
             customers,
-            generated_at=datetime.now(timezone.utc),
+            datetime.now(timezone.utc),
         )
 
         print(
@@ -63,12 +65,17 @@ def main() -> None:
         )
 
         print("Starting phase 2: request Salesforce access token", flush=True)
-        request_salesforce_access_token(
+        salesforce_access_token: str = await request_salesforce_access_token(
             salesforce_token_url,
             salesforce_client_id,
             salesforce_client_secret,
         )
-        print("Salesforce access token acquired successfully", flush=True)
+        if salesforce_access_token:
+            print("Salesforce access token acquired successfully", flush=True)
+
+
+def main() -> None:
+    asyncio.run(run())
 
 
 if __name__ == "__main__":

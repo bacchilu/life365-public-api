@@ -1,10 +1,13 @@
 import httpx
 
 
-def _request_access_token(
-    client: httpx.Client, token_url: str, client_id: str, client_secret: str
+async def _request_access_token(
+    client: httpx.AsyncClient,
+    token_url: str,
+    client_id: str,
+    client_secret: str,
 ) -> str:
-    response: httpx.Response = client.post(
+    response: httpx.Response = await client.post(
         token_url,
         headers={"Content-Type": "application/x-www-form-urlencoded"},
         data={
@@ -25,17 +28,19 @@ def _request_access_token(
     return access_token
 
 
-def request_salesforce_access_token(
+async def request_salesforce_access_token(
     token_url: str,
     client_id: str,
     client_secret: str,
-    client: httpx.Client | None = None,
+    client: httpx.AsyncClient | None = None,
 ) -> str:
     if client is not None:
-        return _request_access_token(client, token_url, client_id, client_secret)
+        return await _request_access_token(
+            client, token_url, client_id, client_secret
+        )
 
-    with httpx.Client(timeout=30.0) as managed_client:
-        return _request_access_token(
+    async with httpx.AsyncClient(timeout=30.0) as managed_client:
+        return await _request_access_token(
             managed_client,
             token_url,
             client_id,

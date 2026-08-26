@@ -33,15 +33,17 @@ INACTIVE_CUSTOMERS_QUERY = sql.SQL(
 )
 
 
-def collect_inactive_customers(connection_string: str) -> list[InactiveCustomer]:
-    with (
-        psycopg.connect(connection_string) as connection,
+async def collect_inactive_customers(
+    connection_string: str,
+) -> list[InactiveCustomer]:
+    async with (
+        await psycopg.AsyncConnection.connect(connection_string) as connection,
         connection.cursor() as cursor,
     ):
-        cursor.execute(
+        await cursor.execute(
             INACTIVE_CUSTOMERS_QUERY,
             {"states": list(QUALIFYING_LOGISTIC_STATES)},
         )
-        rows: list[TupleRow] = cursor.fetchall()
+        rows: list[TupleRow] = await cursor.fetchall()
 
     return [InactiveCustomer(id=row[0], last_order_date=row[1]) for row in rows]
