@@ -3,7 +3,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from crons.inactive_customers.locking import acquire_job_lock
-from crons.inactive_customers.model import InactiveCustomer
+from crons.inactive_customers.model import (
+    CustomerSyncRecord,
+    CustomerSyncRun,
+    CustomerSyncStatus,
+    InactiveCustomer,
+)
 from crons.inactive_customers.snapshot import write_inactive_customers
 
 
@@ -23,26 +28,66 @@ def test_job_lock_prevents_overlapping_execution(tmp_path: Path) -> None:
 def test_write_inactive_customers_creates_json_snapshot(tmp_path: Path) -> None:
     output_path = tmp_path / "data" / "inactive-customers.json"
     generated_at = datetime(2026, 8, 24, 10, 30, tzinfo=timezone.utc)
-    customers = [
-        InactiveCustomer(
-            id=42,
-            last_order_date=datetime(2026, 5, 1, 9, 15),
+    completed_at = datetime(2026, 8, 24, 10, 45, tzinfo=timezone.utc)
+    records = [
+        CustomerSyncRecord(
+            customer=InactiveCustomer(
+                id=42,
+                last_order_date=datetime(2026, 5, 1, 9, 15),
+            ),
+            status=CustomerSyncStatus.SUCCEEDED,
+            attempt_count=1,
+            completed_at=datetime(2026, 8, 24, 10, 40, tzinfo=timezone.utc),
+            http_status=None,
+            error=None,
         ),
-        InactiveCustomer(
-            id=84,
-            last_order_date=datetime(2025, 12, 12, 16, 45),
+        CustomerSyncRecord(
+            customer=InactiveCustomer(
+                id=84,
+                last_order_date=datetime(2025, 12, 12, 16, 45),
+            ),
+            status=CustomerSyncStatus.FAILED,
+            attempt_count=3,
+            completed_at=datetime(2026, 8, 24, 10, 42, tzinfo=timezone.utc),
+            http_status=400,
+            error="Customer data is invalid",
         ),
     ]
 
-    write_inactive_customers(output_path, customers, generated_at)
+    write_inactive_customers(
+        output_path,
+        CustomerSyncRun(generated_at=generated_at, completed_at=completed_at),
+        records,
+    )
 
     payload = json.loads(output_path.read_text(encoding="utf-8"))
     assert payload == {
         "generated_at": "2026-08-24T10:30:00+00:00",
+        "completed_at": "2026-08-24T10:45:00+00:00",
         "customer_count": 2,
+        "succeeded_count": 1,
+        "failed_count": 1,
         "customers": [
-            {"id": 42, "last_order_date": "2026-05-01T09:15:00"},
-            {"id": 84, "last_order_date": "2025-12-12T16:45:00"},
+            {
+                "id": 42,
+                "last_order_date": "2026-05-01T09:15:00",
+                "sync": {
+                    "status": "succeeded",
+                    "attempt_count": 1,
+                    "completed_at": "2026-08-24T10:40:00+00:00",
+                },
+            },
+            {
+                "id": 84,
+                "last_order_date": "2025-12-12T16:45:00",
+                "sync": {
+                    "status": "failed",
+                    "attempt_count": 3,
+                    "completed_at": "2026-08-24T10:42:00+00:00",
+                    "http_status": 400,
+                    "error": "Customer data is invalid",
+                },
+            },
         ],
     }
     assert list(output_path.parent.glob("*.tmp")) == []

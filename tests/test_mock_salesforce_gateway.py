@@ -5,7 +5,7 @@ import pytest
 
 from crons.inactive_customers import mock_salesforce
 from crons.inactive_customers.mock_salesforce import MockSalesforceGateway
-from crons.inactive_customers.model import InactiveCustomer
+from crons.inactive_customers.model import CustomerSyncStatus, InactiveCustomer
 
 
 @pytest.mark.anyio
@@ -24,7 +24,12 @@ async def test_mock_salesforce_gateway_reports_mock_sync(
         )
     ]
 
-    await gateway.sync_inactive_customers(customers, "test-access-token")
+    batches = [
+        batch
+        async for batch in gateway.sync_inactive_customers(
+            customers, "test-access-token"
+        )
+    ]
 
     output = capsys.readouterr().out
     assert "Starting mock Salesforce sync for 1 customers" in output
@@ -32,3 +37,6 @@ async def test_mock_salesforce_gateway_reports_mock_sync(
     assert "Mock Salesforce sync completed; no customer data was sent" in output
     assert "test-access-token" not in output
     sleep.assert_awaited_once_with(12)
+    assert len(batches) == 1
+    assert batches[0][0].customer_id == 42
+    assert batches[0][0].status is CustomerSyncStatus.SUCCEEDED

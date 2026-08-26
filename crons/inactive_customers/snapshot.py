@@ -1,27 +1,33 @@
 import json
 import os
-from datetime import datetime
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
-from crons.inactive_customers.model import InactiveCustomer
+from crons.inactive_customers.model import (
+    CustomerSyncRecord,
+    CustomerSyncRun,
+    CustomerSyncStatus,
+)
 
 
 def write_inactive_customers(
     output_path: Path,
-    customers: list[InactiveCustomer],
-    generated_at: datetime,
+    run: CustomerSyncRun,
+    records: list[CustomerSyncRecord],
 ) -> None:
     payload: dict[str, object] = {
-        "generated_at": generated_at.isoformat(),
-        "customer_count": len(customers),
-        "customers": [
-            {
-                "id": customer.id,
-                "last_order_date": customer.last_order_date.isoformat(),
-            }
-            for customer in customers
-        ],
+        "generated_at": run.generated_at.isoformat(),
+        "completed_at": (
+            run.completed_at.isoformat() if run.completed_at is not None else None
+        ),
+        "customer_count": len(records),
+        "succeeded_count": sum(
+            record.status is CustomerSyncStatus.SUCCEEDED for record in records
+        ),
+        "failed_count": sum(
+            record.status is CustomerSyncStatus.FAILED for record in records
+        ),
+        "customers": [_customer_payload(record) for record in records],
     }
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -46,3 +52,25 @@ def write_inactive_customers(
     finally:
         if temporary_path is not None:
             temporary_path.unlink(missing_ok=True)
+
+
+def _customer_payload(record: CustomerSyncRecord) -> dict[str, object]:
+    sync: dict[str, object] = {
+        "status": record.status.value,
+        "attempt_count": record.attempt_count,
+        "completed_at": (
+            record.completed_at.isoformat()
+            if record.completed_at is not None
+            else None
+        ),
+    }
+    if record.http_status is not None:
+        sync["http_status"] = record.http_status
+    if record.error is not None:
+        sync["error"] = record.error
+
+    return {
+        "id": record.customer.id,
+        "last_order_date": record.customer.last_order_date.isoformat(),
+        "sync": sync,
+    }
