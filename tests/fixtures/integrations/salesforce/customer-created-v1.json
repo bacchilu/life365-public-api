@@ -1,0 +1,126 @@
+{
+  "schemaVersion": 1,
+  "eventId": "726c7c74-287d-44f2-b060-81fefa3d235d",
+  "occurredAt": "2026-09-03T12:30:00Z",
+  "eventType": "customer.created",
+  "referenceId": 42,
+  "data": {
+    "credentials": {
+      "login": "acme-italia",
+      "password": "initial-customer-password"
+    },
+    "company": {
+      "name": "ACME Italia SRL",
+      "website": "https://www.acme.example",
+      "primaryPhone": "+39 02 1234567",
+      "secondaryPhone": null
+    },
+    "primaryContact": {
+      "fullName": "Mario Rossi",
+      "email": "mario.rossi@acme.example",
+      "additionalEmails": [
+        {
+          "email": "commerciale@acme.example",
+          "commercial": true,
+          "marketing": false,
+          "skype": null
+        }
+      ],
+      "certifiedEmail": "acme@pec.example",
+      "preferredLanguage": "it"
+    },
+    "billingAddress": {
+      "street": "Via Roma 10",
+      "city": "Forli",
+      "postalCode": "47121",
+      "countryCode": "IT"
+    },
+    "delivery": {
+      "businessName": "ACME Italia - Warehouse",
+      "contactName": "Luigi Bianchi",
+      "phone": "+39 02 7654321",
+      "address": {
+        "street": "Via Industriale 25",
+        "city": "Forli",
+        "postalCode": "47122",
+        "countryCode": "IT"
+      }
+    },
+    "taxProfile": {
+      "fiscalCode": "RSSMRA80A01D704X",
+      "vatCountryCode": "IT",
+      "vatNumber": "12345678901",
+      "viesValidated": true,
+      "fiscalAgentCode": null,
+      "secondaryTaxValue": "0.00"
+    },
+    "communicationPreferences": {
+      "newsletter": true,
+      "privacyRegistered": true,
+      "rulesRegistered": true
+    },
+    "registration": {
+      "registeredAt": "2026-09-03T12:30:00Z",
+      "registrationIp": "203.0.113.42",
+      "verified": true,
+      "lastLoginAt": null
+    },
+    "commercial": {
+      "preferredCategories": [
+        {
+          "code": "cartridge-toner",
+          "label": "Cartridge&Toner"
+        },
+        {
+          "code": "networking",
+          "label": "Network&Security"
+        }
+      ],
+      "salesChannel": {
+        "code": "N13",
+        "label": "Informatica IT Distribution B2B2C"
+      },
+      "assignedAgent": {
+        "name": "Mario Xia",
+        "email": "life365.pt@msn.cn",
+        "phone": null
+      },
+      "paymentAgreement": "Payment by bank transfer within 30 days",
+      "preferredPaymentTypeCode": "BONIFICO",
+      "paymentDays": 30,
+      "paymentDaysEndOfMonth": 0,
+      "creditGranted": "10000.00",
+      "creditValue": "7500.00"
+    },
+    "banking": {
+      "abi": "03069",
+      "cab": "09606",
+      "iban": "IT60X0542811101000000123456"
+    },
+    "shop": {
+      "latitude": 44.222739,
+      "longitude": 12.040731,
+      "groups": [
+        {
+          "code": "professional-group",
+          "label": "Professional Group"
+        }
+      ]
+    },
+    "operationalSettings": {
+      "disableBoxDiscount": false,
+      "disableQuantityDelivery": false,
+      "prepaidReturns": true,
+      "disableSaleLimit": false
+    },
+    "notes": {
+      "items": [],
+      "openCount": 0,
+      "administrativeNote": null
+    },
+    "extensions": {
+      "parameters": null,
+      "extraData": null
+    }
+  }
+}
