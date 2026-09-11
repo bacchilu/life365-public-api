@@ -33,7 +33,8 @@
       "street": "Via Roma 10",
       "city": "Forli",
       "postalCode": "47121",
-      "countryCode": "IT"
+      "countryCode": "IT",
+      "regionName": "Forlì-Cesena"
     },
     "delivery": {
       "businessName": "ACME Italia - Warehouse",
@@ -43,7 +44,8 @@
         "street": "Via Industriale 25",
         "city": "Forli",
         "postalCode": "47122",
-        "countryCode": "IT"
+        "countryCode": "IT",
+        "regionName": "Forlì-Cesena"
       }
     },
     "taxProfile": {
@@ -61,7 +63,6 @@
     },
     "registration": {
       "registeredAt": "2026-09-03T12:30:00Z",
-      "registrationIp": "203.0.113.42",
       "verified": true,
       "lastLoginAt": null
     },
@@ -81,9 +82,11 @@
         "label": "Informatica IT Distribution B2B2C"
       },
       "assignedAgent": {
+        "referenceId": 117,
+        "userLogin": "InkloudPortugal",
         "name": "Mario Xia",
         "email": "life365.pt@msn.cn",
-        "phone": null
+        "phone": "00351 969087160"
       },
       "paymentAgreement": "Payment by bank transfer within 30 days",
       "preferredPaymentTypeCode": "BONIFICO",

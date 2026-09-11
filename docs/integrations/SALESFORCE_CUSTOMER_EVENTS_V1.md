@@ -112,9 +112,19 @@ its value can be `null`.
 | Property | JSON type | Nullable | Description |
 |---|---|---|---|
 | `registeredAt` | RFC 3339 `string` | Yes | Customer registration date and time. |
-| `registrationIp` | `string` | Yes | IP address used during registration. |
 | `verified` | `boolean` | Yes | Customer verification state. |
 | `lastLoginAt` | RFC 3339 `string` | Yes | Date and time of the latest login. |
+
+`registrationIp` is intentionally not part of the integration payload. When
+Life365 processes a `customer.created` event, it obtains the client IPv4
+address from the trusted HTTP request context and stores it in
+`customers.registration_ip`. A later `customer.updated` event does not change
+that value.
+
+When the API runs behind a reverse proxy, Life365 must accept a forwarded
+client address only from a configured trusted proxy. It must validate that the
+selected address is IPv4 before it writes the value. Arbitrary forwarded
+headers supplied by an untrusted client must not determine the stored address.
 
 ### `commercial`
 
@@ -122,7 +132,7 @@ its value can be `null`.
 |---|---|---|---|
 | `preferredCategories` | `IntegrationCategory[]` | No | Complete list of preferred product categories. |
 | `salesChannel` | `IntegrationSalesChannel` | Yes | Assigned sales channel. |
-| `assignedAgent` | `IntegrationAgent` | Yes | Assigned commercial agent. |
+| `assignedAgent` | `IntegrationAgent` | Yes | Assigned Life365 commercial agent. `null` delegates assignment to Life365. |
 | `paymentAgreement` | `string` | Yes | Text that describes the payment agreement. |
 | `preferredPaymentTypeCode` | `string` | Yes | Shared payment type code. |
 | `paymentDays` | `number` | Yes | Integer number of payment days. |
@@ -188,15 +198,61 @@ its value can be `null`.
 | `street` | `string` | No | Street and building information. |
 | `city` | `string` | No | City name. |
 | `postalCode` | `string` | Yes | Postal or ZIP code. |
-| `countryCode` | `string` | Yes | Country code used by the integration. |
+| `countryCode` | `string` | No | Uppercase ISO 3166-1 alpha-2 country code. |
+| `regionName` | `string` | No | Exact Life365 region name associated with `countryCode`. |
+
+Salesforce must populate `regionName` with a value from the enabled Life365
+region catalog supplied for the selected country. The pair
+`(countryCode, regionName)` identifies one Life365 region. For example:
+
+```json
+{
+  "street": "Via Roma 10",
+  "city": "Forli",
+  "postalCode": "47121",
+  "countryCode": "IT",
+  "regionName": "Forlì-Cesena"
+}
+```
+
+The region name is a controlled integration value, not unrestricted address
+text. Salesforce can store it in a dedicated controlled field or translate
+its internal state or province value through an explicit mapping. It must not
+assume that a standard Salesforce state value is a valid Life365 region name.
+Life365 includes specialized values such as `Venezia - laguna` and
+`Roma - fuori GRA` that do not necessarily correspond to standard political
+subdivisions.
+
+The receiver matches both values exactly against an enabled Life365 region.
+Disabled historical rows are not valid catalog options. An unknown country and
+region pair is a mapping error; the receiver must not use fuzzy matching or
+silently select another region.
 
 ### `IntegrationAgent`
 
 | Property | JSON type | Nullable | Description |
 |---|---|---|---|
-| `name` | `string` | No | Agent display name. |
-| `email` | `string` | No | Agent email address. |
-| `phone` | `string` | Yes | Agent telephone number. |
+| `referenceId` | `number` | No | Positive integer Life365 `agents.id`; this is the authoritative agent identity. |
+| `userLogin` | `string` | No | Current Life365 agent login supplied as descriptive data. |
+| `name` | `string` | No | Current agent display name supplied as descriptive data. |
+| `email` | `string` | No | Current agent email address supplied as descriptive data. |
+| `phone` | `string` | Yes | Current agent telephone number supplied as descriptive data. |
+
+Life365 resolves an incoming agent using only `referenceId`. The other fields
+are snapshots that let Salesforce display useful agent information. They do
+not participate in identity matching, and an inbound customer event must not
+use them to update the `agents` table. Life365 populates them from the current
+agent row when it sends customer data to Salesforce.
+
+The `assignedAgent` property is required in `customer.created`, but its value
+can be `null`. A complete object selects the agent identified by `referenceId`.
+`null` delegates the assignment to Life365, which applies its configured
+fallback-agent policy.
+
+In a `customer.updated` patch, omitting `assignedAgent` leaves the assignment
+unchanged. A complete object changes it to the referenced agent, while `null`
+asks Life365 to apply its fallback-agent policy. A non-null object containing
+an unknown `referenceId` is a mapping error and does not activate the fallback.
 
 ### `IntegrationCategory`
 
@@ -283,12 +339,15 @@ Life365 mapping rules and can produce a validation error.
 
 - UUID values use the standard hyphenated string representation.
 - Date-time values use RFC 3339 and include `Z` or an explicit UTC offset.
-- `referenceId`, `paymentDays`, `paymentDaysEndOfMonth`, and `openCount` are
-  JSON integers. `referenceId` is positive and `openCount` is non-negative.
+- Customer and agent `referenceId` values, `paymentDays`,
+  `paymentDaysEndOfMonth`, and `openCount` are JSON integers. Both reference
+  identifiers are positive and `openCount` is non-negative.
 - Financial and tax decimal values are JSON strings, such as `"10000.00"`, so
   JSON number conversion cannot lose decimal precision.
-- Country and language values are strings. Their supported-code mapping is a
-  Life365 persistence concern and is not defined by this structural contract.
+- Country codes use uppercase ISO 3166-1 alpha-2 values. Address region names
+  use the exact controlled values supplied in the Life365 region catalog.
+- Language values are strings. Their supported-code mapping is a Life365
+  persistence concern and is not defined by this structural contract.
 - Empty arrays are valid. Empty strings are values and are not equivalent to
   `null`.
 
@@ -315,6 +374,10 @@ This contract describes integration data. It does not expose Salesforce
 Life365 table relationships. The Life365 infrastructure adapter is responsible
 for translating reference objects and values into local database identifiers.
 
-The contract does not yet specify the database mapping, conflict policy,
-stale-event policy, or durable idempotency storage. Those rules must be defined
-before PostgreSQL writes are enabled.
+The contract does not yet specify the complete database mapping, conflict
+policy, stale-event policy, or durable idempotency storage. Those rules must
+be defined before PostgreSQL writes are enabled.
+
+The current database mapping audit and its unresolved decisions are documented
+in
+[`SALESFORCE_CUSTOMER_POSTGRESQL_MAPPING_V1.md`](SALESFORCE_CUSTOMER_POSTGRESQL_MAPPING_V1.md).
