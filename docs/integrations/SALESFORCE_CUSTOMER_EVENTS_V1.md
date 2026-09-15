@@ -25,7 +25,8 @@ Every request is one customer event.
 | `schemaVersion` | `number` | Yes | Contract version. The only version defined here is integer `1`. |
 | `eventId` | `string` | Yes | UUID that identifies one event and supports idempotent retries. |
 | `occurredAt` | `string` | Yes | RFC 3339 timestamp with a UTC offset. |
-| `eventType` | `string` | Yes | One of `customer.created`, `customer.updated`, or `customer.deleted`. |
+| `resourceVersion` | `number` | Yes | Positive integer sequence for this customer resource. |
+| `eventType` | `string` | Yes | One of `customer.created` or `customer.updated`. |
 | `referenceId` | `number` | By event | Positive integer Life365 customer ID. |
 | `data` | `object` | By event | Complete customer data or a customer patch. |
 
@@ -33,14 +34,39 @@ The valid property combinations are:
 
 | `eventType` | `referenceId` | `data` |
 |---|---|---|
-| `customer.created` | Optional | Required and complete |
+| `customer.created` | Must be absent | Required and complete |
 | `customer.updated` | Required | Required patch; it can be an empty object |
-| `customer.deleted` | Required | Must be absent |
 
-For `customer.created`, Salesforce omits `referenceId` when the Life365
-customer does not exist. Life365 returns the new customer ID in the response.
-Salesforce can provide `referenceId` when the Life365 customer ID is already
-known.
+For `customer.created`, Salesforce must omit `referenceId`. Life365 allocates
+the customer ID and returns it in the response. A create event that supplies a
+`referenceId` is invalid; retries use the original `eventId` rather than a
+caller-selected customer ID.
+
+For `customer.updated`, `referenceId` identifies the existing Life365
+customer. Life365 returns a missing-resource error when that customer does not
+exist and does not create it implicitly.
+
+Customer deletion is outside the version 1 synchronization scope. Version 1
+does not accept `customer.deleted`; deletion can be designed in a future
+contract version without implying physical or cascading database deletion.
+
+## Event Identity And Ordering
+
+`eventId` provides idempotency. Replaying the same complete event with the same
+`eventId` returns the stored result without applying another mutation. Reusing
+an `eventId` with different event content is a conflict.
+
+`resourceVersion` provides ordering independently of `occurredAt`:
+
+- A create event uses `resourceVersion: 1`.
+- An update must use the previous accepted version plus one.
+- A lower or equal version is stale and is rejected.
+- A version greater than the next expected value has a gap and is rejected.
+- A valid replay identified by `eventId` returns its stored result before the
+  version check causes another mutation.
+
+`occurredAt` remains audit information. Clock differences, equal timestamps,
+and delayed delivery make it unsuitable as the ordering key.
 
 ## Create Data
 
@@ -53,7 +79,7 @@ its value can be `null`.
 
 | Property | JSON type | Nullable | Description |
 |---|---|---|---|
-| `login` | `string` | No | Customer login. |
+| `login` | `string` | No | Customer login. Life365 trims outer whitespace and enforces case-insensitive uniqueness. |
 | `password` | `string` | No | Customer password value accepted by the integration. It is sensitive and must not be logged. |
 
 ### `company`
@@ -170,8 +196,12 @@ headers supplied by an untrusted client must not determine the stored address.
 | Property | JSON type | Nullable | Description |
 |---|---|---|---|
 | `items` | `IntegrationCustomerNote[]` | No | Complete list of structured customer notes. |
-| `openCount` | `number` | No | Non-negative integer count of open notes. |
 | `administrativeNote` | `string` | Yes | Internal administrative note. |
+
+`openCount` is intentionally not part of the integration payload. Life365
+derives `customers.notes_open` from the number of items whose `open` value is
+`true`. A create derives the value from the complete `items` array. An update
+recalculates it only when `notes.items` is supplied.
 
 ### `extensions`
 
@@ -289,6 +319,12 @@ descriptive. Version 1 does not define these catalogs as closed JSON enums, so
 a receiver must report an unsupported code as a mapping error instead of
 rejecting the event as structurally invalid.
 
+Every non-null reference must resolve exactly one supported Life365 value.
+Unknown regions, agents, categories, sales channels, payment types, and shop
+groups reject the complete event. The implementation must not guess an ID,
+select the first match, or apply a fallback unless this contract explicitly
+defines one. `assignedAgent: null` is the explicit agent-fallback case.
+
 ## Update Semantics
 
 The `data` property of a `customer.updated` event is a recursive partial form
@@ -335,13 +371,35 @@ represents an omitted property; `null` represents an explicit clear request.
 Whether a database constraint permits a specific clear request is part of the
 Life365 mapping rules and can produce a validation error.
 
+A field or section whose create definition is not nullable cannot be cleared
+by an update. This includes credentials, required company and contact values,
+the billing address, address country and region values, required booleans, and
+required arrays. Supplying `null` for one of these values rejects the complete
+event. Empty arrays remain the valid way to clear required collection values.
+Fields explicitly marked nullable can be cleared unless a field-specific rule,
+such as the fallback rule for `assignedAgent`, defines another meaning.
+
+## Extension Patch Rules
+
+`extensions.parameters` and `extensions.extraData` use recursive JSON Merge
+Patch semantics during updates:
+
+- An omitted extension property remains unchanged.
+- A top-level `null` stores SQL `NULL` for that extension object.
+- A supplied object merges recursively with the existing JSON object.
+- An omitted nested key remains unchanged.
+- A nested key set to `null` is removed.
+- A supplied array replaces the complete existing array at that key.
+
+The implementation must preserve unknown keys that the patch does not mention.
+
 ## Scalar Rules
 
 - UUID values use the standard hyphenated string representation.
 - Date-time values use RFC 3339 and include `Z` or an explicit UTC offset.
-- Customer and agent `referenceId` values, `paymentDays`,
-  `paymentDaysEndOfMonth`, and `openCount` are JSON integers. Both reference
-  identifiers are positive and `openCount` is non-negative.
+- Customer and agent `referenceId` values, `resourceVersion`, `paymentDays`,
+  and `paymentDaysEndOfMonth` are JSON integers. Reference identifiers and
+  `resourceVersion` are positive.
 - Financial and tax decimal values are JSON strings, such as `"10000.00"`, so
   JSON number conversion cannot lose decimal precision.
 - Country codes use uppercase ISO 3166-1 alpha-2 values. Address region names
@@ -374,10 +432,10 @@ This contract describes integration data. It does not expose Salesforce
 Life365 table relationships. The Life365 infrastructure adapter is responsible
 for translating reference objects and values into local database identifiers.
 
-The contract does not yet specify the complete database mapping, conflict
-policy, stale-event policy, or durable idempotency storage. Those rules must
-be defined before PostgreSQL writes are enabled.
+The contract defines validation, conflict, idempotency, and ordering behavior.
+The durable processed-event and resource-version storage required to enforce
+those rules must be implemented before PostgreSQL writes are enabled.
 
-The current database mapping audit and its unresolved decisions are documented
-in
+The current database mapping audit and its remaining implementation
+prerequisites are documented in
 [`SALESFORCE_CUSTOMER_POSTGRESQL_MAPPING_V1.md`](SALESFORCE_CUSTOMER_POSTGRESQL_MAPPING_V1.md).

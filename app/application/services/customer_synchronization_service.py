@@ -7,7 +7,6 @@ from uuid import UUID
 CustomerEventType = Literal[
     "customer.created",
     "customer.updated",
-    "customer.deleted",
 ]
 
 

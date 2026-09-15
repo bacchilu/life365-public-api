@@ -2,6 +2,7 @@ import os
 
 import httpx
 import pytest
+from pydantic import ValidationError
 
 os.environ.setdefault("DATABASE_URL", "postgresql://localhost/test")
 os.environ.setdefault(
@@ -11,6 +12,19 @@ os.environ.setdefault(
 
 from app.api.integrations.routes import IntegrationCustomerData, SalesforceEventRequest
 from app.main import app
+
+
+def test_salesforce_event_rejects_customer_deletion() -> None:
+    with pytest.raises(ValidationError):
+        SalesforceEventRequest.model_validate(
+            {
+                "schemaVersion": 1,
+                "eventId": "726c7c74-287d-44f2-b060-81fefa3d235d",
+                "occurredAt": "2026-09-04T10:00:00Z",
+                "eventType": "customer.deleted",
+                "referenceId": 42,
+            }
+        )
 
 
 @pytest.mark.anyio

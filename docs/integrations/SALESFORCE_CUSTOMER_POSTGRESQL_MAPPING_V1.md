@@ -67,29 +67,31 @@ coordinates, note counts, or array members. The application must validate
 these values.
 
 The login constraint is case-sensitive, while authentication uses
-`LOWER(login)`. The database has 20,470 exact unique logins but only 20,457
-case-folded unique logins. Thus, 13 case-insensitive duplicate pairs exist. New
-synchronization code must reject a login that conflicts after case folding;
-the existing duplicates need a separate cleanup or an explicit authentication
-rule.
+`LOWER(login)`. On 2026-09-14, all 20,486 rows were unique under `LOWER(login)`.
+Normalization with `LOWER(TRIM(login))` found one remaining conflict:
+customer IDs 13808 and 32192 store `" Cristhian"` and `"cristhian"`. New
+synchronization code trims outer whitespace before storage, preserves the
+remaining spelling, and rejects conflicts under `LOWER(TRIM(login))`. The
+existing pair must be corrected before a matching functional unique index is
+added.
 
 Twenty tables reference `customers`. Eighteen use `ON DELETE RESTRICT`,
 including `orders`, `contracts`, `rmas`, `tickets`, and `customer_notes`.
-`mail_queue` and `mkt_events` use `ON DELETE SET NULL`. Thus,
-`customer.deleted` cannot reliably perform a physical delete for customers
-with business history. The contract needs a logical-delete policy or an
-explicit conflict response.
+`mail_queue` and `mkt_events` use `ON DELETE SET NULL`. Customer deletion is
+therefore outside the version 1 synchronization scope and is deferred to a
+future contract design.
 
 ## Event Envelope Mapping
 
 | Contract path | Database destination | Status | Conversion and validation |
 |---|---|---|---|
 | `schemaVersion` | None currently | Metadata | Accept integer `1`; store it in a future processed-event table. |
-| `eventId` | None currently | Problem | Durable idempotency storage does not exist. Store the UUID before writes are enabled. |
-| `occurredAt` | None currently | Decision | Store as `timestamptz` with processed-event metadata for audit and ordering. |
-| `eventType` | Service dispatch | Metadata | Accept the three contract values and store the selected value with event metadata. |
-| `referenceId` | `customers.id` | Direct | Positive integer. Omit on create to use the identity; require for update and delete. Explicit create IDs are technically supported. |
-| `data` | Multiple destinations | Metadata | Complete for create, partial for update, and absent for delete. |
+| `eventId` | Future processed-event table | Metadata | Store the UUID, canonical event fingerprint, status, and result. An identical replay returns its stored result; conflicting reuse fails. |
+| `occurredAt` | Future processed-event table | Metadata | Store as `timestamptz` for audit. Do not use it to order mutations. |
+| `resourceVersion` | Future per-customer synchronization state | Metadata | Create requires `1`; update requires the previous accepted value plus one. Reject stale values and gaps. |
+| `eventType` | Service dispatch | Metadata | Accept `customer.created` and `customer.updated`; version 1 rejects deletion events. |
+| `referenceId` | `customers.id` | Direct | Must be absent on create so PostgreSQL generates the ID. Required on update; return a missing-resource error when it does not exist. |
+| `data` | Multiple destinations | Metadata | Complete for create and partial for update. |
 
 ## Customer Data Mapping
 
@@ -97,7 +99,7 @@ explicit conflict response.
 
 | Contract path | Database destination | Status | Conversion and validation |
 |---|---|---|---|
-| `credentials.login` | `customers.login` | Direct | Required, maximum 50 characters. Reject overlength and case-insensitive conflicts; do not truncate. |
+| `credentials.login` | `customers.login` | Direct | Required, maximum 50 characters after trimming outer whitespace. Preserve case, reject blank values, and enforce uniqueness with `LOWER(TRIM(login))`; do not truncate. |
 | `credentials.password` | `customers.pass` | Direct | Required, maximum 50 characters. Never log it. Existing authentication compares the stored value directly and also accepts an MD5 of it as input. |
 | `company.name` | `customers.business_name` | Direct | Maximum 120 characters. The contract requires it although the column is nullable. |
 | `company.website` | `customers.website` | Direct | Nullable, maximum 100 characters. Validate URL syntax if URL semantics are required. |
@@ -191,8 +193,9 @@ used for the billing address.
 | `taxProfile.fiscalAgentCode` | `customers.fiscal_agent_code` | Direct | Nullable, maximum 45 characters. |
 | `taxProfile.secondaryTaxValue` | `customers.tax2` | Direct | Parse with `Decimal`, quantize to 2 places, and enforce `numeric(18,2)` range. Do not parse through `float`. |
 
-The existing creator requires at least one of fiscal code or VAT number. That
-rule is not a database constraint and must be confirmed for synchronization.
+The existing creator requires at least one of fiscal code or VAT number. The
+synchronization service preserves this business rule: create requires at least
+one value, and update cannot clear the last value when the other is absent.
 
 ### Communication Preferences
 
@@ -333,7 +336,7 @@ wins or this side effect applies.
 | `notes.items[].occurredAt` | JSON key `date` | JSON | Parse RFC 3339 and serialize in the legacy date format selected for the adapter. |
 | `notes.items[].text` | JSON key `note` | JSON | Required string. Define an application length limit. |
 | `notes.items[].open` | JSON key `open` | JSON | Required JSON boolean. |
-| `notes.openCount` | `customers.notes_open` | Direct | Required non-negative integer. Decide whether to trust it or derive it from items. |
+| Derived open-item count | `customers.notes_open` | Direct | `openCount` is absent from the payload. Count `notes.items` entries whose `open` value is true. Recalculate on create and whenever an update supplies `notes.items`. |
 | `notes.administrativeNote` | `customers.admin_note` | Direct | Nullable, maximum 250 characters. |
 
 Observed `_notes` values are arrays or SQL `NULL`. Every observed element is an
@@ -347,14 +350,14 @@ destination for `notes.items`.
 
 | Contract path | Database destination | Status | Conversion and validation |
 |---|---|---|---|
-| `extensions.parameters` | `customers.parameters` | JSON | Nullable JSONB object. Create can store it directly; update needs merge or replacement rules. |
-| `extensions.extraData` | `customers.extra_data` | JSON | Nullable JSONB object. Create can store it directly; update needs merge or replacement rules. |
+| `extensions.parameters` | `customers.parameters` | JSON | Nullable JSONB object. Create stores it directly. Update uses recursive JSON Merge Patch: omitted keys remain, nested null removes a key, and arrays replace. Top-level null stores SQL `NULL`. |
+| `extensions.extraData` | `customers.extra_data` | JSON | Nullable JSONB object. Apply the same create and recursive update rules as `parameters`. |
 
 Observed non-null values are objects. Common `parameters` keys include
 `not_buyer`. Common `extra_data` keys include `origin`, `origin_id`,
 `annual_revenue`, `business_type`, `employee_number`, `interests`,
-`monthly_orders`, and `year_established`. Preserve unknown keys according to
-the final update policy.
+`monthly_orders`, and `year_established`. Recursive updates preserve every
+unknown key that the patch does not mention.
 
 ## Existing Write Behavior
 
@@ -371,7 +374,8 @@ the final update policy.
 - A specialized IBAN update validates and compacts the value.
 - Authentication matches login case-insensitively and accepts either the
   stored password or `md5(stored_password)` as input.
-- Deletion performs a physical `DELETE` and lets foreign-key errors propagate.
+- Legacy deletion performs a physical `DELETE` and lets foreign-key errors
+  propagate. Version 1 synchronization does not expose deletion.
 - The legacy cursor context commits after successful completion.
 
 The synchronization mapper should execute one event in one transaction. It
@@ -404,17 +408,34 @@ from an empty collection. `commercial.assignedAgent` is an explicit exception:
 its `null` value requests the Life365 fallback-agent policy and never writes a
 null `customers.agent_id`.
 
-## Blocking And Open Decisions
+Required contract fields cannot be cleared. Update DTO validation rejects
+`null` for every field or section marked non-nullable by the create contract.
+This includes credentials, required company and contact values, billing
+address identity, required booleans, and required arrays. Empty arrays clear
+required collections without changing their non-null state.
 
-1. Add durable processed-event storage for idempotency and event ordering.
-2. Define logical deletion, physical deletion with conflict, or another clear
-   behavior for `customer.deleted`.
+Every non-null reference lookup is strict and is part of the customer-write
+transaction. Unknown regions, agents, categories, sales channels, payment
+types, or shop groups reject the complete event. No mapper can guess an ID or
+select the first candidate. The documented `assignedAgent: null` fallback is
+the only agent-lookup exception.
+
+An update for an unknown customer `referenceId` returns a missing-resource
+error and performs no insert. Customer creation always lets PostgreSQL allocate
+the ID; a create request containing `referenceId` is invalid.
+
+## Remaining Implementation Prerequisites
+
+1. Add durable processed-event and per-customer resource-version storage.
+2. Correct the remaining whitespace-normalized login conflict and add a
+   functional unique index for `LOWER(TRIM(login))`.
 3. Decide whether Salesforce can write `creditValue` or Life365 derives it.
 4. Define how a null sales-channel object interacts with its database default.
 5. Define whether a shop group can override the supplied sales channel.
-6. Define whether `notes.openCount` is supplied or derived.
-7. Define merge or replacement behavior for update patches in extensions.
-8. Define case-insensitive login uniqueness and handle existing duplicates.
+
+The contract and database ambiguities listed in roadmap Task 3 are resolved.
+The items above are schema or implementation work, plus separate commercial
+ownership decisions that were identified by the broader mapping audit.
 
 Every version 1 payload leaf has a database destination or an explicit mapping
 problem in this document.
