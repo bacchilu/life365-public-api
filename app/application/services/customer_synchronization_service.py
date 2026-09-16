@@ -1,32 +1,16 @@
-from collections.abc import Mapping
-from dataclasses import dataclass
-from datetime import datetime
-from typing import Literal
-from uuid import UUID
-
-CustomerEventType = Literal[
-    "customer.created",
-    "customer.updated",
-]
-
-
-@dataclass(frozen=True, slots=True)
-class CustomerSynchronizationResult:
-    success: bool
-    reference_id: int
+from app.application.dtos.customer_integration.events import (
+    CustomerIntegrationEvent,
+    CustomerSynchronizationResult,
+    CustomerUpdatedEvent,
+)
 
 
 class CustomerSynchronizationService:
     async def synchronize_customer(
-        self,
-        *,
-        schema_version: int,
-        event_id: UUID,
-        occurred_at: datetime,
-        event_type: CustomerEventType,
-        reference_id: int | None,
-        data: Mapping[str, object] | None,
+        self, event: CustomerIntegrationEvent
     ) -> CustomerSynchronizationResult:
-        return CustomerSynchronizationResult(
-            success=True, reference_id=reference_id if reference_id is not None else 42
+        reference_id = (
+            event.reference_id if isinstance(event, CustomerUpdatedEvent) else 42
         )
+
+        return CustomerSynchronizationResult(success=True, reference_id=reference_id)
