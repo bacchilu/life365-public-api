@@ -1,4 +1,6 @@
+import json
 import os
+from pathlib import Path
 
 import httpx
 import pytest
@@ -10,8 +12,17 @@ os.environ.setdefault(
     "test-secret-key-with-at-least-32-bytes",
 )
 
+import app.api.integrations.routes as integration_routes
 from app.api.integrations.routes import IntegrationCustomerData, SalesforceEventRequest
+from app.application.dtos.customer_integration.events import (
+    CustomerSynchronizationResult,
+)
 from app.main import app
+
+_FIXTURE_PATH = (
+    Path(__file__).resolve().parent
+    / "fixtures/integrations/salesforce/customer-created-v1.json"
+)
 
 
 def test_salesforce_event_rejects_customer_deletion() -> None:
@@ -28,26 +39,30 @@ def test_salesforce_event_rejects_customer_deletion() -> None:
 
 
 @pytest.mark.anyio
-async def test_receive_salesforce_event_returns_mock_success() -> None:
-    event_id: str = "726c7c74-287d-44f2-b060-81fefa3d235d"
-    request_body: dict[str, object] = {
-        "schemaVersion": 1,
-        "eventId": event_id,
-        "occurredAt": "2026-09-04T10:00:00Z",
-        "eventType": "customer.created",
-        "data": {
-            "credentials": {
-                "login": "acme-italia",
-                "password": "initial-customer-password",
-            }
-        },
-    }
+async def test_receive_salesforce_event_returns_mock_success(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    request_body: dict[str, object] = json.loads(
+        _FIXTURE_PATH.read_text(encoding="utf-8")
+    )
+
+    class FakeCustomerSynchronizationService:
+        async def synchronize_customer(
+            self, **_kwargs: object
+        ) -> CustomerSynchronizationResult:
+            return CustomerSynchronizationResult(success=True, reference_id=42)
+
+    monkeypatch.setattr(
+        integration_routes,
+        "customer_synchronization_service",
+        FakeCustomerSynchronizationService(),
+    )
 
     request = SalesforceEventRequest.model_validate(request_body)
 
     assert isinstance(request.data, IntegrationCustomerData)
     assert request.data.credentials.login == "acme-italia"
-    assert request.data.credentials.password == "initial-customer-password"
+    assert request.data.company.name == "ACME Italia SRL"
 
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://testserver"
@@ -60,6 +75,6 @@ async def test_receive_salesforce_event_returns_mock_success() -> None:
     assert response.status_code == 200
     assert response.json() == {
         "success": True,
-        "eventId": event_id,
+        "eventId": request_body["eventId"],
         "referenceId": 42,
     }

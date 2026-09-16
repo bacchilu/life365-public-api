@@ -1,13 +1,24 @@
 from datetime import datetime
-from typing import Literal
+from re import fullmatch
 from uuid import UUID
 
 from fastapi import APIRouter
-from pydantic import BaseModel, Field
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    Field,
+    StrictInt,
+    field_validator,
+    model_validator,
+)
 
-from app.application.services.customer_synchronization_service import (
+from app.api.integrations.schemas.base import IntegrationRequestModel
+from app.api.integrations.schemas.customer import IntegrationCustomerData
+from app.application.dtos.customer_integration.events import (
     CustomerEventType,
     CustomerSynchronizationResult,
+)
+from app.application.services.customer_synchronization_service import (
     CustomerSynchronizationService,
 )
 
@@ -15,26 +26,44 @@ router: APIRouter = APIRouter(tags=["integrations"])
 customer_synchronization_service = CustomerSynchronizationService()
 
 
-class IntegrationCustomerCredentials(BaseModel):
-    login: str = Field(min_length=1)
-    password: str = Field(min_length=1, repr=False)
-
-
-class IntegrationCustomerData(BaseModel):
-    credentials: IntegrationCustomerCredentials
-
-
-class CustomerUpdatedData(BaseModel):
+class CustomerUpdatedData(IntegrationRequestModel):
     pass
 
 
-class SalesforceEventRequest(BaseModel):
-    schema_version: Literal[1] = Field(alias="schemaVersion")
+class SalesforceEventRequest(IntegrationRequestModel):
+    schema_version: StrictInt = Field(alias="schemaVersion", ge=1, le=1)
     event_id: UUID = Field(alias="eventId")
-    occurred_at: datetime = Field(alias="occurredAt")
+    occurred_at: AwareDatetime = Field(alias="occurredAt")
+    resource_version: StrictInt = Field(alias="resourceVersion", gt=0)
     event_type: CustomerEventType = Field(alias="eventType")
-    reference_id: int | None = Field(default=None, alias="referenceId", gt=0)
-    data: IntegrationCustomerData | CustomerUpdatedData | None = None
+    reference_id: StrictInt | None = Field(default=None, alias="referenceId", gt=0)
+    data: IntegrationCustomerData | CustomerUpdatedData
+
+    @field_validator("occurred_at", mode="before")
+    @classmethod
+    def validate_timestamp_format(cls, value: object) -> object:
+        if isinstance(value, datetime):
+            return value
+        if isinstance(value, str) and fullmatch(
+            r"[0-9]{4}-[0-9]{2}-[0-9]{2}[Tt][0-9]{2}:[0-9]{2}:[0-9]{2}"
+            r"(?:\.[0-9]+)?(?:[Zz]|[+-][0-9]{2}:[0-9]{2})",
+            value,
+        ):
+            return value
+        raise ValueError("Date-time must be an RFC 3339 string with a UTC offset")
+
+    @model_validator(mode="after")
+    def validate_event_shape(self) -> "SalesforceEventRequest":
+        if self.event_type == "customer.created":
+            if self.reference_id is not None:
+                raise ValueError("customer.created must not contain referenceId")
+            if self.resource_version != 1:
+                raise ValueError("customer.created must use resourceVersion 1")
+            if not isinstance(self.data, IntegrationCustomerData):
+                raise ValueError("customer.created requires complete customer data")
+        elif self.reference_id is None:
+            raise ValueError("customer.updated requires referenceId")
+        return self
 
 
 class SalesforceEventResponse(BaseModel):
