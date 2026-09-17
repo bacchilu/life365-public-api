@@ -4,7 +4,7 @@ from pathlib import Path
 
 import httpx
 import pytest
-from pydantic import ValidationError
+from pydantic import TypeAdapter, ValidationError
 
 os.environ.setdefault("DATABASE_URL", "postgresql://localhost/test")
 os.environ.setdefault(
@@ -13,7 +13,10 @@ os.environ.setdefault(
 )
 
 import app.api.integrations.routes as integration_routes
-from app.api.integrations.routes import IntegrationCustomerData, SalesforceEventRequest
+from app.api.integrations.routes import SalesforceEventRequest
+from app.api.integrations.schemas.customer import (
+    IntegrationCustomerData as ApiIntegrationCustomerData,
+)
 from app.application.dtos.customer_integration.events import (
     CustomerSynchronizationResult,
 )
@@ -23,11 +26,12 @@ _FIXTURE_PATH = (
     Path(__file__).resolve().parent
     / "fixtures/integrations/salesforce/customer-created-v1.json"
 )
+_EVENT_ADAPTER = TypeAdapter(SalesforceEventRequest)
 
 
 def test_salesforce_event_rejects_customer_deletion() -> None:
     with pytest.raises(ValidationError):
-        SalesforceEventRequest.model_validate(
+        _EVENT_ADAPTER.validate_python(
             {
                 "schemaVersion": 1,
                 "eventId": "726c7c74-287d-44f2-b060-81fefa3d235d",
@@ -48,7 +52,7 @@ async def test_receive_salesforce_event_returns_mock_success(
 
     class FakeCustomerSynchronizationService:
         async def synchronize_customer(
-            self, **_kwargs: object
+            self, _event: object
         ) -> CustomerSynchronizationResult:
             return CustomerSynchronizationResult(success=True, reference_id=42)
 
@@ -58,9 +62,9 @@ async def test_receive_salesforce_event_returns_mock_success(
         FakeCustomerSynchronizationService(),
     )
 
-    request = SalesforceEventRequest.model_validate(request_body)
+    request = _EVENT_ADAPTER.validate_python(request_body)
 
-    assert isinstance(request.data, IntegrationCustomerData)
+    assert isinstance(request.data, ApiIntegrationCustomerData)
     assert request.data.credentials.login == "acme-italia"
     assert request.data.company.name == "ACME Italia SRL"
 
