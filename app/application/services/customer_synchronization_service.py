@@ -3,9 +3,13 @@ from app.application.dtos.customer_integration.events import (
     CustomerSynchronizationResult,
     CustomerUpdatedEvent,
 )
+from app.application.ports import CustomerSynchronizationUnitOfWork
 
 
 class CustomerSynchronizationService:
+    def __init__(self, unit_of_work: CustomerSynchronizationUnitOfWork) -> None:
+        self._unit_of_work = unit_of_work
+
     async def synchronize_customer(
         self, event: CustomerIntegrationEvent
     ) -> CustomerSynchronizationResult:

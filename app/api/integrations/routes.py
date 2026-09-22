@@ -1,6 +1,7 @@
+from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
 from app.api.integrations.converters.events import convert_customer_event
@@ -11,9 +12,20 @@ from app.application.dtos.customer_integration.events import (
 from app.application.services.customer_synchronization_service import (
     CustomerSynchronizationService,
 )
+from app.infrastructure.data_mapper.customer_synchronization import (
+    InMemoryCustomerSynchronizationStore,
+    InMemoryCustomerSynchronizationUnitOfWork,
+)
 
 router: APIRouter = APIRouter(tags=["integrations"])
-customer_synchronization_service = CustomerSynchronizationService()
+customer_synchronization_store = InMemoryCustomerSynchronizationStore()
+
+
+def get_customer_synchronization_service() -> CustomerSynchronizationService:
+    unit_of_work = InMemoryCustomerSynchronizationUnitOfWork(
+        customer_synchronization_store
+    )
+    return CustomerSynchronizationService(unit_of_work)
 
 
 class SalesforceEventResponse(BaseModel):
@@ -33,6 +45,10 @@ class SalesforceEventResponse(BaseModel):
 )
 async def receive_salesforce_event(
     payload: SalesforceEventRequest,
+    customer_synchronization_service: Annotated[
+        CustomerSynchronizationService,
+        Depends(get_customer_synchronization_service),
+    ],
 ) -> SalesforceEventResponse:
     event = convert_customer_event(payload)
     result: CustomerSynchronizationResult = (

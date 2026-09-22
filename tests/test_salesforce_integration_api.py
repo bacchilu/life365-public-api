@@ -43,9 +43,7 @@ def test_salesforce_event_rejects_customer_deletion() -> None:
 
 
 @pytest.mark.anyio
-async def test_receive_salesforce_event_returns_mock_success(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_receive_salesforce_event_returns_mock_success() -> None:
     request_body: dict[str, object] = json.loads(
         _FIXTURE_PATH.read_text(encoding="utf-8")
     )
@@ -56,11 +54,16 @@ async def test_receive_salesforce_event_returns_mock_success(
         ) -> CustomerSynchronizationResult:
             return CustomerSynchronizationResult(success=True, reference_id=42)
 
-    monkeypatch.setattr(
-        integration_routes,
-        "customer_synchronization_service",
-        FakeCustomerSynchronizationService(),
-    )
+    fake_service = FakeCustomerSynchronizationService()
+
+    async def override_customer_synchronization_service() -> (
+        FakeCustomerSynchronizationService
+    ):
+        return fake_service
+
+    app.dependency_overrides[
+        integration_routes.get_customer_synchronization_service
+    ] = override_customer_synchronization_service
 
     request = _EVENT_ADAPTER.validate_python(request_body)
 
@@ -68,12 +71,17 @@ async def test_receive_salesforce_event_returns_mock_success(
     assert request.data.credentials.login == "acme-italia"
     assert request.data.company.name == "ACME Italia SRL"
 
-    async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=app), base_url="http://testserver"
-    ) as client:
-        response = await client.post(
-            "/integrations/salesforce/events",
-            json=request_body,
+    try:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+        ) as client:
+            response = await client.post(
+                "/integrations/salesforce/events",
+                json=request_body,
+            )
+    finally:
+        app.dependency_overrides.pop(
+            integration_routes.get_customer_synchronization_service
         )
 
     assert response.status_code == 200

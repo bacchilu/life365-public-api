@@ -1,5 +1,6 @@
 from collections.abc import Mapping
-from typing import Protocol
+from types import TracebackType
+from typing import Protocol, Self
 
 from app.application.domain import (
     Customer,
@@ -9,6 +10,12 @@ from app.application.domain import (
     TokenSession,
 )
 from app.application.dtos import ProductRecommendation
+from app.application.dtos.customer_integration.customer import IntegrationCustomerData
+from app.application.dtos.customer_integration.customer_patch import CustomerUpdatedData
+from app.application.dtos.customer_integration.events import (
+    CustomerIntegrationEvent,
+    CustomerSynchronizationResult,
+)
 
 
 class CheckGateway(Protocol):
@@ -27,6 +34,57 @@ class CustomersGateway(Protocol):
     async def get_customers(
         self, limit: int = 100, offset: int = 0
     ) -> list[Customer]: ...
+
+
+class CustomerSynchronizationGateway(Protocol):
+    async def customer_exists(self, reference_id: int) -> bool: ...
+
+    async def create_customer(self, data: IntegrationCustomerData) -> int: ...
+
+    async def update_customer(
+        self, reference_id: int, data: CustomerUpdatedData
+    ) -> None: ...
+
+
+class ProcessedCustomerEventGateway(Protocol):
+    async def get_processed_result(
+        self, event: CustomerIntegrationEvent
+    ) -> CustomerSynchronizationResult | None:
+        """Return the result only when the stored event content is identical."""
+        ...
+
+    async def save_processed_result(
+        self,
+        event: CustomerIntegrationEvent,
+        result: CustomerSynchronizationResult,
+    ) -> None: ...
+
+
+class CustomerResourceVersionGateway(Protocol):
+    async def get_resource_version(self, reference_id: int) -> int | None: ...
+
+    async def save_resource_version(
+        self, reference_id: int, resource_version: int
+    ) -> None: ...
+
+
+class CustomerSynchronizationUnitOfWork(Protocol):
+    customers: CustomerSynchronizationGateway
+    processed_events: ProcessedCustomerEventGateway
+    resource_versions: CustomerResourceVersionGateway
+
+    async def __aenter__(self) -> Self: ...
+
+    async def __aexit__(
+        self,
+        exception_type: type[BaseException] | None,
+        exception: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None: ...
+
+    async def commit(self) -> None: ...
+
+    async def rollback(self) -> None: ...
 
 
 class OrdersGateway(Protocol):

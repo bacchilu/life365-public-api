@@ -21,6 +21,7 @@ from app.application.exceptions import (
     InvalidCustomerReferenceException,
     StaleCustomerVersionException,
 )
+from app.application.ports import CustomerSynchronizationUnitOfWork
 from app.application.services.customer_synchronization_service import (
     CustomerSynchronizationService,
 )
@@ -48,6 +49,11 @@ def _updated_event() -> CustomerUpdatedEvent:
         reference_id=42,
         data=CustomerUpdatedData(),
     )
+
+
+def _service() -> CustomerSynchronizationService:
+    unit_of_work = cast(CustomerSynchronizationUnitOfWork, object())
+    return CustomerSynchronizationService(unit_of_work)
 
 
 def test_created_event_has_full_data_and_no_customer_reference() -> None:
@@ -105,9 +111,15 @@ def test_service_accepts_one_typed_event() -> None:
     assert parameters == ("self", "event")
 
 
+def test_service_requires_one_unit_of_work() -> None:
+    parameters = tuple(signature(CustomerSynchronizationService).parameters)
+
+    assert parameters == ("unit_of_work",)
+
+
 @pytest.mark.anyio
 async def test_service_returns_the_result_for_each_event_type() -> None:
-    service = CustomerSynchronizationService()
+    service = _service()
 
     created = await service.synchronize_customer(_created_event())
     updated = await service.synchronize_customer(_updated_event())

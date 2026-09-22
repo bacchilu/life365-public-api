@@ -1,4 +1,6 @@
 from datetime import datetime, timedelta, timezone
+from types import TracebackType
+from typing import Self, cast
 
 import pytest
 
@@ -10,11 +12,21 @@ from app.application.domain import (
     Role,
     TokenSession,
 )
+from app.application.dtos.customer_integration.customer import IntegrationCustomerData
+from app.application.dtos.customer_integration.customer_patch import CustomerUpdatedData
+from app.application.dtos.customer_integration.events import (
+    CustomerIntegrationEvent,
+    CustomerSynchronizationResult,
+)
 from app.application.ports import (
     CheckGateway,
     CredentialsGateway,
+    CustomerResourceVersionGateway,
+    CustomerSynchronizationGateway,
+    CustomerSynchronizationUnitOfWork,
     CustomersGateway,
     Life365APIGateway,
+    ProcessedCustomerEventGateway,
     ProductsGateway,
     TokenSessionGateway,
 )
@@ -84,6 +96,83 @@ class FakeTokenSessionGateway(TokenSessionGateway):
         self._revoked_tokens.add(token_id)
 
 
+class FakeCustomerSynchronizationGateway(CustomerSynchronizationGateway):
+    def __init__(self) -> None:
+        self.customer_ids: set[int] = set()
+        self.updated_customer_id: int | None = None
+
+    async def customer_exists(self, reference_id: int) -> bool:
+        return reference_id in self.customer_ids
+
+    async def create_customer(self, data: IntegrationCustomerData) -> int:
+        self.customer_ids.add(42)
+        return 42
+
+    async def update_customer(
+        self, reference_id: int, data: CustomerUpdatedData
+    ) -> None:
+        self.updated_customer_id = reference_id
+
+
+class FakeProcessedCustomerEventGateway(ProcessedCustomerEventGateway):
+    def __init__(self) -> None:
+        self.event: CustomerIntegrationEvent | None = None
+        self.result: CustomerSynchronizationResult | None = None
+
+    async def get_processed_result(
+        self, event: CustomerIntegrationEvent
+    ) -> CustomerSynchronizationResult | None:
+        return self.result if event == self.event else None
+
+    async def save_processed_result(
+        self,
+        event: CustomerIntegrationEvent,
+        result: CustomerSynchronizationResult,
+    ) -> None:
+        self.event = event
+        self.result = result
+
+
+class FakeCustomerResourceVersionGateway(CustomerResourceVersionGateway):
+    def __init__(self) -> None:
+        self.versions: dict[int, int] = {}
+
+    async def get_resource_version(self, reference_id: int) -> int | None:
+        return self.versions.get(reference_id)
+
+    async def save_resource_version(
+        self, reference_id: int, resource_version: int
+    ) -> None:
+        self.versions[reference_id] = resource_version
+
+
+class FakeCustomerSynchronizationUnitOfWork(CustomerSynchronizationUnitOfWork):
+    def __init__(self) -> None:
+        self.customers = FakeCustomerSynchronizationGateway()
+        self.processed_events = FakeProcessedCustomerEventGateway()
+        self.resource_versions = FakeCustomerResourceVersionGateway()
+        self.committed = False
+        self.rolled_back = False
+
+    async def __aenter__(self) -> Self:
+        return self
+
+    async def __aexit__(
+        self,
+        exception_type: type[BaseException] | None,
+        exception: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        if exception is not None:
+            await self.rollback()
+
+    async def commit(self) -> None:
+        self.committed = True
+
+    async def rollback(self) -> None:
+        self.rolled_back = True
+
+
 def _as_check_gateway(gateway: CheckGateway) -> CheckGateway:
     return gateway
 
@@ -108,6 +197,12 @@ def _as_token_session_gateway(
     gateway: TokenSessionGateway,
 ) -> TokenSessionGateway:
     return gateway
+
+
+def _as_customer_synchronization_unit_of_work(
+    unit_of_work: CustomerSynchronizationUnitOfWork,
+) -> CustomerSynchronizationUnitOfWork:
+    return unit_of_work
 
 
 @pytest.mark.anyio
@@ -188,3 +283,26 @@ def test_life365_portal_api_implements_gateway() -> None:
     gateway: Life365APIGateway = _as_life365_api_gateway(Life365PortalAPI())
 
     assert isinstance(gateway, Life365PortalAPI)
+
+
+@pytest.mark.anyio
+async def test_customer_synchronization_unit_of_work_contract() -> None:
+    unit_of_work = _as_customer_synchronization_unit_of_work(
+        FakeCustomerSynchronizationUnitOfWork()
+    )
+    customer_data = cast(IntegrationCustomerData, object())
+    customer_patch = CustomerUpdatedData()
+    event = cast(CustomerIntegrationEvent, object())
+    result = CustomerSynchronizationResult(success=True, reference_id=42)
+
+    async with unit_of_work:
+        reference_id = await unit_of_work.customers.create_customer(customer_data)
+        await unit_of_work.customers.update_customer(reference_id, customer_patch)
+        await unit_of_work.resource_versions.save_resource_version(reference_id, 1)
+        await unit_of_work.processed_events.save_processed_result(event, result)
+        await unit_of_work.commit()
+
+    assert await unit_of_work.customers.customer_exists(42) is True
+    assert await unit_of_work.resource_versions.get_resource_version(42) == 1
+    assert await unit_of_work.processed_events.get_processed_result(event) == result
+    assert unit_of_work.committed is True
