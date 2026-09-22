@@ -1,21 +1,12 @@
-from typing import Literal, cast
 from uuid import UUID
 
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
-from app.api.integrations.schemas.events import (
-    CustomerUpdatedEventRequest,
-    SalesforceEventRequest,
-)
-from app.application.dtos.customer_integration.customer import IntegrationCustomerData
-from app.application.dtos.customer_integration.customer_patch import (
-    CustomerUpdatedData,
-)
+from app.api.integrations.converters.events import convert_customer_event
+from app.api.integrations.schemas.events import SalesforceEventRequest
 from app.application.dtos.customer_integration.events import (
-    CustomerCreatedEvent,
     CustomerSynchronizationResult,
-    CustomerUpdatedEvent,
 )
 from app.application.services.customer_synchronization_service import (
     CustomerSynchronizationService,
@@ -43,24 +34,7 @@ class SalesforceEventResponse(BaseModel):
 async def receive_salesforce_event(
     payload: SalesforceEventRequest,
 ) -> SalesforceEventResponse:
-    if isinstance(payload, CustomerUpdatedEventRequest):
-        event = CustomerUpdatedEvent(
-            schema_version=cast(Literal[1], payload.schema_version),
-            event_id=payload.event_id,
-            occurred_at=payload.occurred_at,
-            resource_version=payload.resource_version,
-            reference_id=payload.reference_id,
-            data=cast(CustomerUpdatedData, payload.data),
-        )
-    else:
-        event = CustomerCreatedEvent(
-            schema_version=cast(Literal[1], payload.schema_version),
-            event_id=payload.event_id,
-            occurred_at=payload.occurred_at,
-            resource_version=payload.resource_version,
-            data=cast(IntegrationCustomerData, payload.data),
-        )
-
+    event = convert_customer_event(payload)
     result: CustomerSynchronizationResult = (
         await customer_synchronization_service.synchronize_customer(event)
     )
