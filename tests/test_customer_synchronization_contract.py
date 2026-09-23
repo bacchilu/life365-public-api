@@ -1,11 +1,16 @@
-from dataclasses import FrozenInstanceError, fields
+import json
+from dataclasses import FrozenInstanceError, fields, replace
 from datetime import UTC, datetime
 from inspect import signature
-from typing import cast
+from pathlib import Path
 from uuid import UUID
 
 import pytest
 
+from app.api.integrations.converters.customer import convert_customer_data
+from app.api.integrations.schemas.customer import (
+    IntegrationCustomerData as CustomerRequestData,
+)
 from app.application.dtos.customer_integration.customer import IntegrationCustomerData
 from app.application.dtos.customer_integration.customer_patch import CustomerUpdatedData
 from app.application.dtos.customer_integration.events import (
@@ -21,13 +26,25 @@ from app.application.exceptions import (
     InvalidCustomerReferenceException,
     StaleCustomerVersionException,
 )
-from app.application.ports import CustomerSynchronizationUnitOfWork
 from app.application.services.customer_synchronization_service import (
     CustomerSynchronizationService,
+)
+from app.infrastructure.data_mapper.customer_synchronization import (
+    InMemoryCustomerSynchronizationStore,
+    InMemoryCustomerSynchronizationUnitOfWork,
 )
 
 _EVENT_ID = UUID("726c7c74-287d-44f2-b060-81fefa3d235d")
 _OCCURRED_AT = datetime(2026, 9, 16, 10, 0, tzinfo=UTC)
+_FIXTURE_PATH = (
+    Path(__file__).resolve().parent
+    / "fixtures/integrations/salesforce/customer-created-v1.json"
+)
+
+
+def _customer_data() -> IntegrationCustomerData:
+    payload = json.loads(_FIXTURE_PATH.read_text(encoding="utf-8"))["data"]
+    return convert_customer_data(CustomerRequestData.model_validate(payload))
 
 
 def _created_event() -> CustomerCreatedEvent:
@@ -36,7 +53,7 @@ def _created_event() -> CustomerCreatedEvent:
         event_id=_EVENT_ID,
         occurred_at=_OCCURRED_AT,
         resource_version=1,
-        data=cast(IntegrationCustomerData, object()),
+        data=_customer_data(),
     )
 
 
@@ -52,7 +69,8 @@ def _updated_event() -> CustomerUpdatedEvent:
 
 
 def _service() -> CustomerSynchronizationService:
-    unit_of_work = cast(CustomerSynchronizationUnitOfWork, object())
+    store = InMemoryCustomerSynchronizationStore()
+    unit_of_work = InMemoryCustomerSynchronizationUnitOfWork(store)
     return CustomerSynchronizationService(unit_of_work)
 
 
@@ -122,7 +140,13 @@ async def test_service_returns_the_result_for_each_event_type() -> None:
     service = _service()
 
     created = await service.synchronize_customer(_created_event())
-    updated = await service.synchronize_customer(_updated_event())
+    updated = await service.synchronize_customer(
+        replace(
+            _updated_event(),
+            event_id=UUID("726c7c74-287d-44f2-b060-81fefa3d235e"),
+            reference_id=created.reference_id,
+        )
+    )
 
-    assert created == CustomerSynchronizationResult(success=True, reference_id=42)
-    assert updated == CustomerSynchronizationResult(success=True, reference_id=42)
+    assert created == CustomerSynchronizationResult(success=True, reference_id=1)
+    assert updated == CustomerSynchronizationResult(success=True, reference_id=1)

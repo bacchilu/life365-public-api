@@ -2,17 +2,31 @@
 
 from asyncio import Lock
 from copy import deepcopy
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields, is_dataclass, replace
 from types import TracebackType
-from typing import Self
+from typing import Any, Self
 from uuid import UUID
 
+from app.application.dtos.customer_integration.address import IntegrationAddress
+from app.application.dtos.customer_integration.address_patch import (
+    IntegrationAddressPatch,
+)
+from app.application.dtos.customer_integration.commercial import (
+    IntegrationSalesChannel,
+)
+from app.application.dtos.customer_integration.commercial_patch import (
+    IntegrationSalesChannelPatch,
+)
 from app.application.dtos.customer_integration.customer import IntegrationCustomerData
 from app.application.dtos.customer_integration.customer_patch import CustomerUpdatedData
 from app.application.dtos.customer_integration.events import (
     CustomerIntegrationEvent,
     CustomerSynchronizationResult,
 )
+from app.application.dtos.customer_integration.operations_patch import (
+    IntegrationCustomerExtensionsPatch,
+)
+from app.application.dtos.customer_integration.unset import UNSET
 from app.application.exceptions import (
     CustomerNotFoundException,
     CustomerSynchronizationConflictException,
@@ -28,7 +42,6 @@ from app.application.ports import (
 @dataclass(slots=True)
 class _Snapshot:
     customers: dict[int, IntegrationCustomerData] = field(default_factory=dict)
-    updates: dict[int, list[CustomerUpdatedData]] = field(default_factory=dict)
     processed_events: dict[
         UUID,
         tuple[CustomerIntegrationEvent, CustomerSynchronizationResult],
@@ -45,6 +58,62 @@ class InMemoryCustomerSynchronizationStore:
     lock: Lock = field(default_factory=Lock)
 
 
+def _merge_json(existing: dict[str, Any] | None, patch: dict[str, Any]) -> dict[str, Any]:
+    merged = deepcopy(existing) if existing is not None else {}
+    for key, value in patch.items():
+        if value is None:
+            merged.pop(key, None)
+        elif isinstance(value, dict):
+            current = merged.get(key)
+            merged[key] = _merge_json(
+                current if isinstance(current, dict) else None, value
+            )
+        else:
+            merged[key] = deepcopy(value)
+    return merged
+
+
+def _create_nested_value(patch: Any) -> Any:
+    if isinstance(patch, IntegrationAddressPatch):
+        complete_type = IntegrationAddress
+    elif isinstance(patch, IntegrationSalesChannelPatch):
+        complete_type = IntegrationSalesChannel
+    else:
+        return deepcopy(patch)
+
+    values = {field.name: getattr(patch, field.name) for field in fields(complete_type)}
+    if any(value is UNSET for value in values.values()):
+        raise CustomerSynchronizationConflictException(
+            "A patch for a missing nested object must supply every field"
+        )
+    return complete_type(**values)
+
+
+def _apply_patch(current: Any, patch: Any) -> Any:
+    changes: dict[str, Any] = {}
+    for patch_field in fields(patch):
+        value = getattr(patch, patch_field.name)
+        if value is UNSET:
+            continue
+
+        previous = getattr(current, patch_field.name)
+        if isinstance(patch, IntegrationCustomerExtensionsPatch) and isinstance(
+            value, dict
+        ):
+            value = _merge_json(previous, value)
+        elif is_dataclass(value) and not isinstance(value, type):
+            value = (
+                _apply_patch(previous, value)
+                if previous is not None and is_dataclass(previous)
+                else _create_nested_value(value)
+            )
+        else:
+            value = deepcopy(value)
+        changes[patch_field.name] = value
+
+    return replace(current, **changes)
+
+
 class _CustomerGateway(CustomerSynchronizationGateway):
     def __init__(self, snapshot: _Snapshot) -> None:
         self._snapshot = snapshot
@@ -52,20 +121,27 @@ class _CustomerGateway(CustomerSynchronizationGateway):
     async def customer_exists(self, reference_id: int) -> bool:
         return reference_id in self._snapshot.customers
 
+    async def get_customer(
+        self, reference_id: int
+    ) -> IntegrationCustomerData | None:
+        customer = self._snapshot.customers.get(reference_id)
+        return deepcopy(customer) if customer is not None else None
+
     async def create_customer(self, data: IntegrationCustomerData) -> int:
         reference_id = self._snapshot.next_reference_id
         self._snapshot.next_reference_id += 1
-        self._snapshot.customers[reference_id] = data
+        self._snapshot.customers[reference_id] = deepcopy(data)
         return reference_id
 
     async def update_customer(
         self, reference_id: int, data: CustomerUpdatedData
     ) -> None:
-        if reference_id not in self._snapshot.customers:
+        current = self._snapshot.customers.get(reference_id)
+        if current is None:
             raise CustomerNotFoundException(
                 f"Customer {reference_id} does not exist"
             )
-        self._snapshot.updates.setdefault(reference_id, []).append(data)
+        self._snapshot.customers[reference_id] = _apply_patch(current, data)
 
 
 class _ProcessedEventGateway(ProcessedCustomerEventGateway):
@@ -83,7 +159,7 @@ class _ProcessedEventGateway(ProcessedCustomerEventGateway):
             raise CustomerSynchronizationConflictException(
                 f"Event id {event.event_id} has different content"
             )
-        return result
+        return deepcopy(result)
 
     async def save_processed_result(
         self,
@@ -95,7 +171,10 @@ class _ProcessedEventGateway(ProcessedCustomerEventGateway):
             raise CustomerSynchronizationConflictException(
                 f"Event id {event.event_id} has different content"
             )
-        self._snapshot.processed_events[event.event_id] = (event, result)
+        self._snapshot.processed_events[event.event_id] = (
+            deepcopy(event),
+            deepcopy(result),
+        )
 
 
 class _ResourceVersionGateway(CustomerResourceVersionGateway):
@@ -116,7 +195,7 @@ class InMemoryCustomerSynchronizationUnitOfWork(
 ):
     def __init__(self, store: InMemoryCustomerSynchronizationStore) -> None:
         self._store = store
-        self._snapshot = deepcopy(store.snapshot)
+        self._snapshot = _Snapshot()
         self.customers: CustomerSynchronizationGateway = _CustomerGateway(
             self._snapshot
         )
@@ -127,10 +206,12 @@ class InMemoryCustomerSynchronizationUnitOfWork(
             _ResourceVersionGateway(self._snapshot)
         )
         self._active = False
+        self._commit_requested = False
 
     async def __aenter__(self) -> Self:
         await self._store.lock.acquire()
         self._active = True
+        self._commit_requested = False
         self._replace_snapshot(deepcopy(self._store.snapshot))
         return self
 
@@ -141,18 +222,20 @@ class InMemoryCustomerSynchronizationUnitOfWork(
         traceback: TracebackType | None,
     ) -> None:
         try:
-            if exception is not None:
-                await self.rollback()
+            if exception is None and self._commit_requested:
+                self._store.snapshot = deepcopy(self._snapshot)
         finally:
             self._active = False
+            self._commit_requested = False
             self._store.lock.release()
 
     async def commit(self) -> None:
         self._require_active()
-        self._store.snapshot = deepcopy(self._snapshot)
+        self._commit_requested = True
 
     async def rollback(self) -> None:
         self._require_active()
+        self._commit_requested = False
         self._replace_snapshot(deepcopy(self._store.snapshot))
 
     def _replace_snapshot(self, snapshot: _Snapshot) -> None:

@@ -39,6 +39,10 @@ class CustomersGateway(Protocol):
 class CustomerSynchronizationGateway(Protocol):
     async def customer_exists(self, reference_id: int) -> bool: ...
 
+    async def get_customer(
+        self, reference_id: int
+    ) -> IntegrationCustomerData | None: ...
+
     async def create_customer(self, data: IntegrationCustomerData) -> int: ...
 
     async def update_customer(
