@@ -23,13 +23,20 @@ async def resolve_region_id(
     cur: psycopg.AsyncCursor[TupleRow], address: IntegrationAddress
 ) -> int:
     """Find one enabled region using the contract's exact region name."""
+    return await resolve_region_name(cur, address.country_code, address.region_name)
+
+
+async def resolve_region_name(
+    cur: psycopg.AsyncCursor[TupleRow], country_code: str, region_name: str
+) -> int:
+    """Resolve a region after an address patch combines old and new fields."""
     await cur.execute(
-        _SELECT_REGION_ID, (address.country_code, address.region_name)
+        _SELECT_REGION_ID, (country_code, region_name)
     )
     row = await cur.fetchone()
     if row is None:
         raise InvalidCustomerDataException(
-            f"Unknown region {address.region_name!r} "
-            f"for country {address.country_code!r}"
+            f"Unknown region {region_name!r} "
+            f"for country {country_code!r}"
         )
     return row[0]

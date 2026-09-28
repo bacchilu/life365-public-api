@@ -344,10 +344,12 @@ async def test_persistence_error_returns_service_unavailable(
         assert await work.customers.get_customer(1) is None
 
 
-def test_openapi_describes_access_errors_and_temporary_storage() -> None:
+def test_openapi_describes_backends_and_access_errors() -> None:
     operation = app.openapi()["paths"][_URL]["post"]
 
-    assert "in memory" in operation["description"]
+    assert "PostgreSQL mode" in operation["description"]
+    assert "Memory mode" in operation["description"]
+    assert "eventId" in operation["description"]
     assert {"400", "401", "403", "404", "409", "422", "503"} <= set(
         operation["responses"]
     )

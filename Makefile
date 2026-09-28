@@ -29,7 +29,9 @@ test-postgresql: docker-test-db-up
 	CUSTOMER_SYNC_TEST_DATABASE_URL=$(CUSTOMER_SYNC_TEST_DATABASE_URL) \
 		./.venv/bin/pytest -q \
 		tests/test_postgresql_customer_sync_transactions.py \
-		tests/test_postgresql_customer_sync_create.py
+		tests/test_postgresql_customer_sync_create.py \
+		tests/test_postgresql_customer_sync_update.py \
+		tests/test_salesforce_integration_backends.py
 
 docker-network:
 	docker network inspect $(SHARED_DOCKER_NETWORK) >/dev/null 2>&1 || docker network create $(SHARED_DOCKER_NETWORK)

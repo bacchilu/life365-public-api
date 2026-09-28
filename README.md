@@ -37,6 +37,9 @@ Expected response:
 {"status": "ok", "db": "ok"}
 ```
 
+For Salesforce customer event setup, migrations, and request examples, see
+[the synchronization runbook](docs/integrations/SALESFORCE_CUSTOMER_SYNC_RUNBOOK.md).
+
 Inspect the SQLite token sessions:
 
 ```bash

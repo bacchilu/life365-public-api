@@ -433,12 +433,14 @@ the ID; a create request containing `referenceId` is invalid.
    transaction advisory lock for concurrent synchronization requests, but
    legacy writers do not share that lock.
 3. Wire the trusted request IPv4 into the mapper factory and select the
-   PostgreSQL backend when the complete update path is ready. The endpoint
-   currently uses the in-memory backend.
+   PostgreSQL backend. The endpoint defaults to the in-memory backend until
+   `CUSTOMER_SYNC_BACKEND=postgresql` is configured. See the
+   [synchronization runbook](SALESFORCE_CUSTOMER_SYNC_RUNBOOK.md).
 
-The create mapper has been verified against an isolated PostgreSQL test
-database. It stores `creditValue` as supplied on create and stores a null
-sales channel as SQL `NULL`.
+The create and partial-update mappers have been verified against an isolated
+PostgreSQL test database. Updates lock the customer row, preserve omitted
+columns and JSON keys, and commit with the event and resource version. Create
+stores `creditValue` as supplied and stores a null sales channel as SQL `NULL`.
 
 Every version 1 payload leaf has a database destination or an explicit mapping
 problem in this document.

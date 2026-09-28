@@ -12,6 +12,8 @@ POST /integrations/salesforce/events
 The canonical full create example is stored in
 [`tests/fixtures/integrations/salesforce/customer-created-v1.json`](../../tests/fixtures/integrations/salesforce/customer-created-v1.json).
 It contains synthetic data and can be used in API and contract tests.
+Deployment steps, authenticated `curl` examples, retries, and response codes
+are in [the synchronization runbook](SALESFORCE_CUSTOMER_SYNC_RUNBOOK.md).
 
 The contract uses camelCase JSON property names. A breaking contract change
 requires a new `schemaVersion`.

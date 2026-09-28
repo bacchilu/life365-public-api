@@ -18,6 +18,7 @@ from .create_values import create_customer_direct_values
 from .insert import insert_customer_row
 from .logins import reserve_customer_login
 from .reference_values import resolve_customer_reference_values
+from .update import update_customer_row
 
 _CUSTOMER_EXISTS = sql.SQL("SELECT 1 FROM public.customers WHERE id = %s")
 
@@ -27,24 +28,25 @@ class PostgreSQLCustomerDataMapper(CustomerSynchronizationGateway):
         self, cur: psycopg.AsyncCursor[TupleRow], registration_ip: str | None = None
     ) -> None:
         self._cur = cur
-        if registration_ip is None:
-            self._registration_ip = None
-        else:
-            try:
-                self._registration_ip = str(IPv4Address(registration_ip))
-            except ValueError:
-                raise InvalidCustomerDataException(
-                    "Customer registration IP must be IPv4"
-                ) from None
+        self._registration_ip = registration_ip
 
     async def customer_exists(self, reference_id: int) -> bool:
         await self._cur.execute(_CUSTOMER_EXISTS, (reference_id,))
         return await self._cur.fetchone() is not None
 
     async def get_customer(self, reference_id: int) -> IntegrationCustomerData | None:
-        raise NotImplementedError("PostgreSQL customer reads belong to Task 16")
+        raise NotImplementedError("Full PostgreSQL customer reads are not supported")
 
     async def create_customer(self, data: IntegrationCustomerData) -> int:
+        if self._registration_ip is None:
+            raise InvalidCustomerDataException("Client IPv4 address is unavailable")
+        try:
+            registration_ip = str(IPv4Address(self._registration_ip))
+        except ValueError:
+            raise InvalidCustomerDataException(
+                "Customer registration IP must be IPv4"
+            ) from None
+
         password = data.credentials.password
         if not password or len(password) > 50:
             raise InvalidCustomerDataException(
@@ -62,7 +64,7 @@ class PostgreSQLCustomerDataMapper(CustomerSynchronizationGateway):
         values = create_customer_direct_values(data)
         values.update(await resolve_customer_reference_values(self._cur, data))
         values["login"] = login
-        values["registration_ip"] = self._registration_ip
+        values["registration_ip"] = registration_ip
         try:
             return await insert_customer_row(self._cur, values)
         except psycopg.errors.UniqueViolation:
@@ -73,4 +75,9 @@ class PostgreSQLCustomerDataMapper(CustomerSynchronizationGateway):
     async def update_customer(
         self, reference_id: int, data: CustomerUpdatedData
     ) -> None:
-        raise NotImplementedError("PostgreSQL customer updates belong to Task 16")
+        try:
+            await update_customer_row(self._cur, reference_id, data)
+        except psycopg.errors.UniqueViolation:
+            raise CustomerSynchronizationConflictException(
+                "Customer update violates a unique constraint"
+            ) from None
