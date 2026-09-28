@@ -22,6 +22,10 @@ class InvalidCustomerReferenceException(CustomerSynchronizationException):
     """Raised when a customer reference is not valid."""
 
 
+class InvalidCustomerDataException(CustomerSynchronizationException):
+    """Raised when event data cannot map to a valid Life365 customer."""
+
+
 class StaleCustomerVersionException(CustomerSynchronizationException):
     """Raised when an event version is older than the stored version."""
 

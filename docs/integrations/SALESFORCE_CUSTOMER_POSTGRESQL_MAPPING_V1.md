@@ -232,7 +232,7 @@ not an address supplied by Salesforce in the customer DTO.
 | `commercial.preferredCategories` | `customers.preferred_categories` | Lookup | Replace with an `integer[]` of resolved category IDs. Validate every code because array members have no foreign keys. |
 | `commercial.preferredCategories[].code` | Adapter category map | Lookup | Stable identity used to obtain `categories.id`; no code column exists. |
 | `commercial.preferredCategories[].label` | No customer column | Lookup | Descriptive value that can validate the selected category; do not select by label alone. |
-| `commercial.salesChannel` | `customers.sales_channel_id` | Lookup | Resolve to one `sales_channels.id`. Default is ID 1; all current customers have a value. |
+| `commercial.salesChannel` | `customers.sales_channel_id` | Lookup | Resolve a supplied channel to one `sales_channels.id`. Explicit `null` writes SQL `NULL`, rather than activating the ID 1 default. |
 | `commercial.salesChannel.code` | Prefix in `sales_channels.c_name` | Lookup | Values such as `N13` prefix the name; no dedicated code column exists. Use an explicit adapter map. |
 | `commercial.salesChannel.label` | Remaining `sales_channels.c_name` text | Lookup | Descriptive validation value. Existing whitespace is not canonical. |
 | `commercial.assignedAgent` | `customers.agent_id` | Lookup | Required but nullable on create. An object resolves its `referenceId`; `null` applies the Life365 fallback-agent policy. Omission in an update leaves the assignment unchanged. |
@@ -246,7 +246,7 @@ not an address supplied by Salesforce in the customer DTO.
 | `commercial.paymentDays` | `customers.payment_days` | Direct | Nullable integer. Default is `0`; no range constraint exists. |
 | `commercial.paymentDaysEndOfMonth` | `customers.payment_days_eom` | Direct | Nullable integer. Default is `-1`; define its meaning and valid range. |
 | `commercial.creditGranted` | `customers.fido_granted` | Direct | Parse with `Decimal`, use 2 places, and enforce `numeric(10,2)` range. |
-| `commercial.creditValue` | `customers.fido` | Decision | A direct column exists, but current edit logic recalculates it from invoices and granted credit. Confirm ownership before accepting writes. |
+| `commercial.creditValue` | `customers.fido` | Direct | On create, store the supplied exact decimal with 2 places and enforce the `numeric(10,2)` range. Existing Life365 edit logic may recalculate this value later. |
 
 The current category map inferred from the contract and live labels is:
 
@@ -316,8 +316,8 @@ The current shop-group map is:
 | `closed-activity` | 36 | closed activity | None |
 
 Existing edits can change `sales_channel_id` when a new shop group has a
-related channel. Synchronization must define whether the explicit sales channel
-wins or this side effect applies.
+related channel. Synchronization does not apply that side effect: the explicit
+sales-channel value, including `null`, wins over shop-group relationships.
 
 ### Operational Settings
 
@@ -424,18 +424,21 @@ An update for an unknown customer `referenceId` returns a missing-resource
 error and performs no insert. Customer creation always lets PostgreSQL allocate
 the ID; a create request containing `referenceId` is invalid.
 
-## Remaining Implementation Prerequisites
+## Remaining Deployment Prerequisites
 
-1. Add durable processed-event and per-customer resource-version storage.
+1. Apply the durable processed-event and resource-version migration before
+   enabling PostgreSQL synchronization.
 2. Correct the remaining whitespace-normalized login conflict and add a
-   functional unique index for `LOWER(TRIM(login))`.
-3. Decide whether Salesforce can write `creditValue` or Life365 derives it.
-4. Define how a null sales-channel object interacts with its database default.
-5. Define whether a shop group can override the supplied sales channel.
+   functional unique index for `LOWER(TRIM(login))`. The mapper uses a
+   transaction advisory lock for concurrent synchronization requests, but
+   legacy writers do not share that lock.
+3. Wire the trusted request IPv4 into the mapper factory and select the
+   PostgreSQL backend when the complete update path is ready. The endpoint
+   currently uses the in-memory backend.
 
-The contract and database ambiguities listed in roadmap Task 3 are resolved.
-The items above are schema or implementation work, plus separate commercial
-ownership decisions that were identified by the broader mapping audit.
+The create mapper has been verified against an isolated PostgreSQL test
+database. It stores `creditValue` as supplied on create and stores a null
+sales channel as SQL `NULL`.
 
 Every version 1 payload leaf has a database destination or an explicit mapping
 problem in this document.

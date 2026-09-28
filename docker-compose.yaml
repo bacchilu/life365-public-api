@@ -69,6 +69,26 @@ services:
       - /app/crons/jobs.cron
     restart: unless-stopped
 
+  customer-sync-test-db:
+    image: postgres:18.6
+    profiles:
+      - test
+    environment:
+      POSTGRES_DB: life365_public_api_test_customer_sync
+      POSTGRES_USER: customer_sync_test
+      POSTGRES_PASSWORD: customer_sync_test
+    ports:
+      - "127.0.0.1:55432:5432"
+    tmpfs:
+      - /var/lib/postgresql
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U customer_sync_test -d life365_public_api_test_customer_sync
+      interval: 2s
+      timeout: 2s
+      retries: 15
+
 networks:
   life365-shared:
     external: true
