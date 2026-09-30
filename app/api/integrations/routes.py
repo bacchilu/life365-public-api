@@ -28,17 +28,17 @@ from app.application.exceptions import (
 from app.application.services.customer_synchronization_service import (
     CustomerSynchronizationService,
 )
-from app.infrastructure.data_mapper.customer_synchronization import (
-    InMemoryCustomerSynchronizationStore,
-    InMemoryCustomerSynchronizationUnitOfWork,
-)
+from app.infrastructure.data_mapper.connection import DATABASE_URL
 from app.infrastructure.data_mapper.customer_sync.customers import (
     PostgreSQLCustomerDataMapper,
 )
 from app.infrastructure.data_mapper.customer_sync.unit_of_work import (
     PostgreSQLCustomerSynchronizationUnitOfWork,
 )
-from app.infrastructure.data_mapper.connection import DATABASE_URL
+from app.infrastructure.data_mapper.customer_synchronization import (
+    InMemoryCustomerSynchronizationStore,
+    InMemoryCustomerSynchronizationUnitOfWork,
+)
 
 router: APIRouter = APIRouter(tags=["integrations"])
 customer_synchronization_store = InMemoryCustomerSynchronizationStore()
@@ -104,7 +104,9 @@ def _log_event(
     log = (
         logger.info
         if code == status.HTTP_200_OK
-        else logger.error if code >= 500 else logger.warning
+        else logger.error
+        if code >= 500
+        else logger.warning
     )
     log(
         "customer_sync event_id=%s reference_id=%s event_type=%s "
@@ -151,7 +153,8 @@ async def receive_salesforce_event(
         _require_admin(current_user)
     except AuthorizationException as exc:
         _log_event(
-            payload, status.HTTP_403_FORBIDDEN,
+            payload,
+            status.HTTP_403_FORBIDDEN,
             getattr(payload, "reference_id", None),
         )
         raise HTTPException(
@@ -165,7 +168,8 @@ async def receive_salesforce_event(
         )
     except InvalidCustomerReferenceException as exc:
         _log_event(
-            payload, status.HTTP_400_BAD_REQUEST,
+            payload,
+            status.HTTP_400_BAD_REQUEST,
             getattr(payload, "reference_id", None),
         )
         raise HTTPException(
@@ -173,7 +177,8 @@ async def receive_salesforce_event(
         ) from exc
     except CustomerNotFoundException as exc:
         _log_event(
-            payload, status.HTTP_404_NOT_FOUND,
+            payload,
+            status.HTTP_404_NOT_FOUND,
             getattr(payload, "reference_id", None),
         )
         raise HTTPException(
@@ -185,7 +190,8 @@ async def receive_salesforce_event(
         StaleCustomerVersionException,
     ) as exc:
         _log_event(
-            payload, status.HTTP_409_CONFLICT,
+            payload,
+            status.HTTP_409_CONFLICT,
             getattr(payload, "reference_id", None),
         )
         raise HTTPException(
@@ -193,7 +199,8 @@ async def receive_salesforce_event(
         ) from exc
     except InvalidCustomerDataException as exc:
         _log_event(
-            payload, status.HTTP_422_UNPROCESSABLE_CONTENT,
+            payload,
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
             getattr(payload, "reference_id", None),
         )
         raise HTTPException(
@@ -201,7 +208,8 @@ async def receive_salesforce_event(
         ) from exc
     except DBException as exc:
         _log_event(
-            payload, status.HTTP_503_SERVICE_UNAVAILABLE,
+            payload,
+            status.HTTP_503_SERVICE_UNAVAILABLE,
             getattr(payload, "reference_id", None),
         )
         raise HTTPException(
