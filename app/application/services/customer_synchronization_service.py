@@ -50,8 +50,7 @@ class CustomerSynchronizationService:
                     )
                 if event.resource_version != current_version + 1:
                     raise CustomerVersionGapException(
-                        f"Customer {reference_id} expects version "
-                        f"{current_version + 1}"
+                        f"Customer {reference_id} expects version {current_version + 1}"
                     )
                 await work.customers.update_customer(reference_id, event.data)
             else:

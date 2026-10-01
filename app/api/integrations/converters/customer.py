@@ -83,9 +83,7 @@ def convert_customer_data(source: ApiCustomerData) -> IntegrationCustomerData:
         commercial=convert_commercial(source.commercial),
         banking=convert_banking(source.banking),
         shop=convert_shop(source.shop),
-        operational_settings=convert_operational_settings(
-            source.operational_settings
-        ),
+        operational_settings=convert_operational_settings(source.operational_settings),
         notes=convert_notes(source.notes),
         extensions=convert_extensions(source.extensions),
     )
@@ -116,9 +114,7 @@ def convert_customer_patch(
         registration=_convert_patch_section(
             source.registration, convert_registration_patch
         ),
-        commercial=_convert_patch_section(
-            source.commercial, convert_commercial_patch
-        ),
+        commercial=_convert_patch_section(source.commercial, convert_commercial_patch),
         banking=_convert_patch_section(source.banking, convert_banking_patch),
         shop=_convert_patch_section(source.shop, convert_shop_patch),
         operational_settings=_convert_patch_section(
