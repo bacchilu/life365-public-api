@@ -1,4 +1,4 @@
-FROM python:3.14.7
+FROM python:3.14.8
 
 LABEL maintainer="Luca Bacchi <bacchilu@gmail.com> (https://github.com/bacchilu)"
 
