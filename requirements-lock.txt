@@ -53,7 +53,7 @@ rich-toolkit==0.20.6
 rignore==0.8.1
 rstr==3.2.2
 schwifty==2026.7.3
-sentry-sdk==2.71.0
+sentry-sdk==2.72.0
 shellingham==1.5.4
 starlette==1.7.0
 typer==0.27.3
