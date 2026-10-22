@@ -111,8 +111,8 @@ restituisce HTTP `200` con `success`, `eventId` e `referenceId`.
 
 ## Documentazione interattiva
 
-La [Swagger UI dell'ambiente di test](https://test.gnurun.com/api/public/v1/docs) permette di
-consultare gli schemi e provare gli endpoint.
+La [Swagger UI di produzione](https://b2b.life365.eu/public-api/docs)
+permette di consultare gli schemi e provare gli endpoint.
 
 Eseguire `/auth/login`, copiare `access_token`, selezionare **Authorize** e
 inserire il token. Le chiamate eseguite da Swagger modificano realmente i dati
