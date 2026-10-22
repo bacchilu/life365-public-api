@@ -111,7 +111,6 @@ def _update_payload(reference_id: int) -> dict[str, Any]:
         "eventId": "726c7c74-287d-44f2-b060-81fefa3d235e",
         "occurredAt": "2026-09-16T10:00:00Z",
         "eventType": "customer.updated",
-        "resourceVersion": 2,
         "referenceId": reference_id,
         "data": {
             "company": {"website": None, "primaryPhone": ""},
@@ -181,10 +180,12 @@ async def test_admin_can_create_and_update_a_customer(
         assert customer.communication_preferences.newsletter is False
         assert customer.commercial.payment_days == 0
         assert customer.notes.items == ()
-        assert await work.resource_versions.get_resource_version(1) == 2
-        assert await work.processed_events.get_processed_result(
-            convert_customer_event(_EVENT_ADAPTER.validate_python(updated_payload))
-        ) is not None
+        assert (
+            await work.processed_events.get_processed_result(
+                convert_customer_event(_EVENT_ADAPTER.validate_python(updated_payload))
+            )
+            is not None
+        )
 
 
 @pytest.mark.anyio
@@ -207,9 +208,12 @@ async def test_missing_or_invalid_token_cannot_create_a_customer(
     )
     async with InMemoryCustomerSynchronizationUnitOfWork(store) as work:
         assert await work.customers.get_customer(1) is None
-        assert await work.processed_events.get_processed_result(
-            convert_customer_event(_EVENT_ADAPTER.validate_python(payload))
-        ) is None
+        assert (
+            await work.processed_events.get_processed_result(
+                convert_customer_event(_EVENT_ADAPTER.validate_python(payload))
+            )
+            is None
+        )
 
 
 @pytest.mark.anyio
@@ -229,9 +233,12 @@ async def test_non_admin_cannot_create_a_customer(
     assert auth_service.validated_tokens == ["valid-token"]
     async with InMemoryCustomerSynchronizationUnitOfWork(store) as work:
         assert await work.customers.get_customer(1) is None
-        assert await work.processed_events.get_processed_result(
-            convert_customer_event(_EVENT_ADAPTER.validate_python(payload))
-        ) is None
+        assert (
+            await work.processed_events.get_processed_result(
+                convert_customer_event(_EVENT_ADAPTER.validate_python(payload))
+            )
+            is None
+        )
 
 
 @pytest.mark.anyio
@@ -242,9 +249,7 @@ async def test_non_admin_cannot_update_an_existing_customer(
     update_payload = _update_payload(1)
 
     async with _client() as client:
-        created = await client.post(
-            _URL, json=_create_payload(), headers=_HEADERS
-        )
+        created = await client.post(_URL, json=_create_payload(), headers=_HEADERS)
         _authenticate_as(Role.BUYER)
         denied = await client.post(_URL, json=update_payload, headers=_HEADERS)
 
@@ -253,13 +258,15 @@ async def test_non_admin_cannot_update_an_existing_customer(
     async with InMemoryCustomerSynchronizationUnitOfWork(store) as work:
         customer = await work.customers.get_customer(1)
         assert customer is not None
-        assert customer.company.website == _create_payload()["data"]["company"][
-            "website"
-        ]
-        assert await work.resource_versions.get_resource_version(1) == 1
-        assert await work.processed_events.get_processed_result(
-            convert_customer_event(_EVENT_ADAPTER.validate_python(update_payload))
-        ) is None
+        assert (
+            customer.company.website == _create_payload()["data"]["company"]["website"]
+        )
+        assert (
+            await work.processed_events.get_processed_result(
+                convert_customer_event(_EVENT_ADAPTER.validate_python(update_payload))
+            )
+            is None
+        )
 
 
 @pytest.mark.anyio
@@ -275,9 +282,12 @@ async def test_admin_gets_not_found_for_an_unknown_customer(
     assert response.status_code == 404
     async with InMemoryCustomerSynchronizationUnitOfWork(store) as work:
         assert await work.customers.get_customer(42) is None
-        assert await work.processed_events.get_processed_result(
-            convert_customer_event(_EVENT_ADAPTER.validate_python(payload))
-        ) is None
+        assert (
+            await work.processed_events.get_processed_result(
+                convert_customer_event(_EVENT_ADAPTER.validate_python(payload))
+            )
+            is None
+        )
 
 
 @pytest.mark.anyio

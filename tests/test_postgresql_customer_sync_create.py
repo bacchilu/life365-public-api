@@ -52,7 +52,6 @@ _TEST_DATABASE_PREFIX = "life365_public_api_test_"
 _KEY = b"test-customer-sync-hmac-key-32-bytes"
 _TEST_TABLES = (
     "customer_synchronization_events",
-    "customer_synchronization_versions",
     "customers",
     "regions",
     "countries",
@@ -90,16 +89,20 @@ def test_database_url() -> Iterator[str]:
         try:
             conn.execute(_SCHEMA.read_text(encoding="utf-8"))
             conn.execute(_MIGRATION.read_text(encoding="utf-8"))
+            conn.execute(
+                (
+                    _MIGRATION.parent / "0002_remove_customer_resource_versions.sql"
+                ).read_text(encoding="utf-8")
+            )
             yield url
         finally:
             conn.execute(
                 sql.SQL(
                     "DROP TABLE IF EXISTS "
                     "public.customer_synchronization_events, "
-                    "public.customer_synchronization_versions, "
                     "public.customers, public.regions, public.countries, "
                     "public.categories, public.agents, public.sales_channels, "
-                    "public.payment_types, public.shop_groups CASCADE"
+                    "public.payment_types, public.shop_groups"
                 )
             )
 
@@ -116,7 +119,6 @@ def _event(
         schema_version=1,
         event_id=UUID(int=event_number),
         occurred_at=datetime(2026, 9, 25, 10, 0, tzinfo=UTC),
-        resource_version=1,
         data=data,
     )
 
@@ -131,12 +133,11 @@ def _unit_of_work(url: str) -> PostgreSQLCustomerSynchronizationUnitOfWork:
     )
 
 
-def _counts(url: str) -> tuple[int, int, int]:
+def _counts(url: str) -> tuple[int, int]:
     with psycopg.connect(url) as conn:
         counts: list[int] = []
         for table in (
             "customers",
-            "customer_synchronization_versions",
             "customer_synchronization_events",
         ):
             query = sql.SQL("SELECT count(*) FROM {}").format(
@@ -145,7 +146,7 @@ def _counts(url: str) -> tuple[int, int, int]:
             row = conn.execute(query).fetchone()
             assert row is not None
             counts.append(row[0])
-    return counts[0], counts[1], counts[2]
+    return counts[0], counts[1]
 
 
 @pytest.mark.anyio
@@ -158,7 +159,7 @@ async def test_full_create_payload_writes_every_customer_section(
 
     assert result.success is True
     assert result.reference_id > 0
-    assert _counts(test_database_url) == (1, 1, 1)
+    assert _counts(test_database_url) == (1, 1)
     with psycopg.connect(test_database_url, row_factory=dict_row) as conn:
         row = conn.execute(
             sql.SQL("SELECT * FROM public.customers WHERE id = %s"),
@@ -247,7 +248,7 @@ async def test_full_create_payload_writes_every_customer_section(
 
 
 @pytest.mark.anyio
-async def test_bad_field_rolls_back_customer_version_and_event(
+async def test_bad_field_rolls_back_customer_and_event(
     test_database_url: str,
 ) -> None:
     original = _customer_data()
@@ -258,7 +259,7 @@ async def test_bad_field_rolls_back_customer_version_and_event(
             _unit_of_work(test_database_url)
         ).synchronize_customer(_event(invalid))
 
-    assert _counts(test_database_url) == (0, 0, 0)
+    assert _counts(test_database_url) == (0, 0)
 
 
 @pytest.mark.anyio
@@ -274,7 +275,7 @@ async def test_unknown_region_rolls_back_the_event(test_database_url: str) -> No
             _unit_of_work(test_database_url)
         ).synchronize_customer(_event(invalid))
 
-    assert _counts(test_database_url) == (0, 0, 0)
+    assert _counts(test_database_url) == (0, 0)
 
 
 @pytest.mark.anyio
@@ -283,12 +284,11 @@ async def test_failure_after_insert_rolls_back_every_write(
 ) -> None:
     with pytest.raises(RuntimeError, match="stop before commit"):
         async with _unit_of_work(test_database_url) as work:
-            reference_id = await work.customers.create_customer(_customer_data())
-            await work.resource_versions.save_resource_version(reference_id, 1)
+            await work.customers.create_customer(_customer_data())
             await work.commit()
             raise RuntimeError("stop before commit")
 
-    assert _counts(test_database_url) == (0, 0, 0)
+    assert _counts(test_database_url) == (0, 0)
 
 
 @pytest.mark.anyio
@@ -308,11 +308,14 @@ async def test_two_create_events_with_same_login_cannot_both_commit(
     )
 
     assert sum(not isinstance(result, BaseException) for result in results) == 1
-    assert sum(
-        isinstance(result, CustomerSynchronizationConflictException)
-        for result in results
-    ) == 1
-    assert _counts(test_database_url) == (1, 1, 1)
+    assert (
+        sum(
+            isinstance(result, CustomerSynchronizationConflictException)
+            for result in results
+        )
+        == 1
+    )
+    assert _counts(test_database_url) == (1, 1)
 
 
 @pytest.mark.anyio
@@ -400,7 +403,7 @@ async def test_case_insensitive_duplicate_login_is_rejected(
             _unit_of_work(test_database_url)
         ).synchronize_customer(_event(duplicate, event_number=2))
 
-    assert _counts(test_database_url) == (1, 1, 1)
+    assert _counts(test_database_url) == (1, 1)
 
 
 @pytest.mark.anyio
@@ -425,7 +428,7 @@ async def test_invalid_iban_or_credit_value_leaves_no_rows(
             _unit_of_work(test_database_url)
         ).synchronize_customer(_event(invalid_credit, event_number=2))
 
-    assert _counts(test_database_url) == (0, 0, 0)
+    assert _counts(test_database_url) == (0, 0)
 
 
 @pytest.mark.anyio
@@ -443,13 +446,11 @@ async def test_blank_login_and_missing_tax_identity_leave_no_rows(
 
     missing_tax = replace(
         original,
-        tax_profile=replace(
-            original.tax_profile, fiscal_code=None, vat_number=None
-        ),
+        tax_profile=replace(original.tax_profile, fiscal_code=None, vat_number=None),
     )
     with pytest.raises(InvalidCustomerDataException, match="fiscal code or VAT"):
         await CustomerSynchronizationService(
             _unit_of_work(test_database_url)
         ).synchronize_customer(_event(missing_tax, event_number=2))
 
-    assert _counts(test_database_url) == (0, 0, 0)
+    assert _counts(test_database_url) == (0, 0)

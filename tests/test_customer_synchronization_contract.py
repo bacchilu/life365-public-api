@@ -22,9 +22,7 @@ from app.application.exceptions import (
     CustomerNotFoundException,
     CustomerSynchronizationConflictException,
     CustomerSynchronizationException,
-    CustomerVersionGapException,
     InvalidCustomerReferenceException,
-    StaleCustomerVersionException,
 )
 from app.application.services.customer_synchronization_service import (
     CustomerSynchronizationService,
@@ -52,7 +50,6 @@ def _created_event() -> CustomerCreatedEvent:
         schema_version=1,
         event_id=_EVENT_ID,
         occurred_at=_OCCURRED_AT,
-        resource_version=1,
         data=_customer_data(),
     )
 
@@ -62,7 +59,6 @@ def _updated_event() -> CustomerUpdatedEvent:
         schema_version=1,
         event_id=_EVENT_ID,
         occurred_at=_OCCURRED_AT,
-        resource_version=2,
         reference_id=42,
         data=CustomerUpdatedData(),
     )
@@ -78,7 +74,8 @@ def test_created_event_has_full_data_and_no_customer_reference() -> None:
     event = _created_event()
 
     assert event.event_type == "customer.created"
-    assert event.resource_version == 1
+    assert event.schema_version == 1
+    assert "resource_version" not in {event_field.name for event_field in fields(event)}
     assert "reference_id" not in {event_field.name for event_field in fields(event)}
 
 
@@ -95,7 +92,7 @@ def test_events_are_frozen_and_slotted() -> None:
 
     assert not hasattr(event, "__dict__")
     with pytest.raises(FrozenInstanceError):
-        event.resource_version = 2  # type: ignore[misc]
+        event.event_id = UUID(int=2)  # type: ignore[misc]
 
 
 def test_synchronization_result_contains_success_and_life365_id() -> None:
@@ -110,8 +107,6 @@ def test_synchronization_result_contains_success_and_life365_id() -> None:
     [
         CustomerNotFoundException,
         InvalidCustomerReferenceException,
-        StaleCustomerVersionException,
-        CustomerVersionGapException,
         CustomerSynchronizationConflictException,
     ],
 )

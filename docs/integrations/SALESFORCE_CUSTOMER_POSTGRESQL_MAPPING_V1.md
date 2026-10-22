@@ -85,10 +85,9 @@ future contract design.
 
 | Contract path | Database destination | Status | Conversion and validation |
 |---|---|---|---|
-| `schemaVersion` | None currently | Metadata | Accept integer `1`; store it in a future processed-event table. |
-| `eventId` | Future processed-event table | Metadata | Store the UUID, canonical event fingerprint, status, and result. An identical replay returns its stored result; conflicting reuse fails. |
-| `occurredAt` | Future processed-event table | Metadata | Store as `timestamptz` for audit. Do not use it to order mutations. |
-| `resourceVersion` | Future per-customer synchronization state | Metadata | Create requires `1`; update requires the previous accepted value plus one. Reject stale values and gaps. |
+| `schemaVersion` | `customer_synchronization_events.schema_version` | Metadata | Accept and store integer `1`. |
+| `eventId` | `customer_synchronization_events.event_id` | Metadata | Store the UUID, secure HMAC fingerprint, and original result. An identical replay returns its stored result; conflicting reuse fails. Do not store raw payloads or passwords in the event log. |
+| `occurredAt` | `customer_synchronization_events.occurred_at` | Metadata | Store as `timestamptz` for audit. Do not use it to order mutations. |
 | `eventType` | Service dispatch | Metadata | Accept `customer.created` and `customer.updated`; version 1 rejects deletion events. |
 | `referenceId` | `customers.id` | Direct | Must be absent on create so PostgreSQL generates the ID. Required on update; return a missing-resource error when it does not exist. |
 | `data` | Multiple destinations | Metadata | Complete for create and partial for update. |
@@ -426,8 +425,13 @@ the ID; a create request containing `referenceId` is invalid.
 
 ## Remaining Deployment Prerequisites
 
-1. Apply the durable processed-event and resource-version migration before
-   enabling PostgreSQL synchronization.
+1. Apply migrations `0001_customer_synchronization.sql` and then
+   `0002_remove_customer_resource_versions.sql` before enabling PostgreSQL
+   synchronization. Do not rewrite migration 0001. Migration 0002 deletes only
+   event history and version state, without deleting customers. Previously
+   processed events lose duplicate protection and must not be replayed as if
+   their history still existed. Stop old writers before migration and deploy
+   compatible application code before accepting events again.
 2. Correct the remaining whitespace-normalized login conflict and add a
    functional unique index for `LOWER(TRIM(login))`. The mapper uses a
    transaction advisory lock for concurrent synchronization requests, but
@@ -439,7 +443,11 @@ the ID; a create request containing `referenceId` is invalid.
 
 The create and partial-update mappers have been verified against an isolated
 PostgreSQL test database. Updates lock the customer row, preserve omitted
-columns and JSON keys, and commit with the event and resource version. Create
+columns and JSON keys, and commit with the event result. Existing customers need
+no synchronization-history enrollment before updates. There is no server-side
+ordering mechanism: the sender waits for success before sending another event
+for the same customer and retries uncertain requests with identical content and
+the same event ID. Different customers may be processed concurrently. Create
 stores `creditValue` as supplied and stores a null sales channel as SQL `NULL`.
 
 Every version 1 payload leaf has a database destination or an explicit mapping

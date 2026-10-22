@@ -29,7 +29,6 @@ def _event(data: CustomerUpdatedData | None = None) -> CustomerUpdatedEvent:
         schema_version=1,
         event_id=UUID(int=1),
         occurred_at=datetime(2026, 9, 25, 10, 0, tzinfo=UTC),
-        resource_version=2,
         reference_id=42,
         data=data if data is not None else CustomerUpdatedData(),
     )
@@ -62,9 +61,7 @@ def test_same_event_has_the_same_32_byte_fingerprint() -> None:
 def test_supplied_update_values_differ_from_omitted_values(
     patch: CustomerUpdatedData,
 ) -> None:
-    assert event_fingerprint(_event(patch), _KEY) != event_fingerprint(
-        _event(), _KEY
-    )
+    assert event_fingerprint(_event(patch), _KEY) != event_fingerprint(_event(), _KEY)
 
 
 def test_json_map_order_and_equal_numbers_do_not_change_the_fingerprint() -> None:
@@ -102,7 +99,6 @@ def test_event_metadata_changes_the_fingerprint() -> None:
     original = event_fingerprint(event, _KEY)
 
     assert original != event_fingerprint(replace(event, event_id=UUID(int=2)), _KEY)
-    assert original != event_fingerprint(replace(event, resource_version=3), _KEY)
     assert original != event_fingerprint(replace(event, reference_id=43), _KEY)
     assert original != event_fingerprint(
         replace(event, occurred_at=event.occurred_at + timedelta(seconds=1)), _KEY

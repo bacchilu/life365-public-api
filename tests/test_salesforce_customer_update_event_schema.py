@@ -17,7 +17,6 @@ def _update_event(**overrides: Any) -> dict[str, Any]:
         "eventId": "726c7c74-287d-44f2-b060-81fefa3d235d",
         "occurredAt": "2026-09-04T10:00:00Z",
         "eventType": "customer.updated",
-        "resourceVersion": 2,
         "referenceId": 42,
         "data": {"company": {"name": "ACME Italia SRL"}},
     }
@@ -36,15 +35,12 @@ def test_update_event_requires_reference_and_data() -> None:
 
 def test_update_event_rejects_create_event_type() -> None:
     with pytest.raises(ValidationError):
-        _EVENT_ADAPTER.validate_python(
-            _update_event(eventType="customer.created")
-        )
+        _EVENT_ADAPTER.validate_python(_update_event(eventType="customer.created"))
 
 
 def test_create_event_rejects_update_data_shape() -> None:
     event = _update_event(
         eventType="customer.created",
-        resourceVersion=1,
         data={"company": {"name": "ACME Italia SRL"}},
     )
     del event["referenceId"]
@@ -80,3 +76,10 @@ def test_update_event_preserves_omitted_nested_properties() -> None:
     assert request.data.communication_preferences.newsletter is False
     assert request.data.commercial.payment_days == 0
     assert request.data.notes.items == []
+
+
+def test_update_event_rejects_removed_resource_version() -> None:
+    with pytest.raises(ValidationError) as error:
+        _EVENT_ADAPTER.validate_python(_update_event(resourceVersion=2))
+    assert error.value.errors()[0]["loc"][-1] == "resourceVersion"
+    assert error.value.errors()[0]["type"] == "extra_forbidden"

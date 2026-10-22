@@ -3,6 +3,8 @@
 from asyncio import Lock
 from copy import deepcopy
 from dataclasses import dataclass, field, fields, is_dataclass, replace
+from hmac import compare_digest
+from secrets import token_bytes
 from types import TracebackType
 from typing import Any, Self
 from uuid import UUID
@@ -32,11 +34,12 @@ from app.application.exceptions import (
     CustomerSynchronizationConflictException,
 )
 from app.application.ports import (
-    CustomerResourceVersionGateway,
     CustomerSynchronizationGateway,
     CustomerSynchronizationUnitOfWork,
     ProcessedCustomerEventGateway,
 )
+
+from .customer_sync.fingerprint import event_fingerprint
 
 
 @dataclass(slots=True)
@@ -44,9 +47,8 @@ class _Snapshot:
     customers: dict[int, IntegrationCustomerData] = field(default_factory=dict)
     processed_events: dict[
         UUID,
-        tuple[CustomerIntegrationEvent, CustomerSynchronizationResult],
+        tuple[bytes, CustomerSynchronizationResult],
     ] = field(default_factory=dict)
-    resource_versions: dict[int, int] = field(default_factory=dict)
     next_reference_id: int = 1
 
 
@@ -56,9 +58,14 @@ class InMemoryCustomerSynchronizationStore:
 
     snapshot: _Snapshot = field(default_factory=_Snapshot)
     lock: Lock = field(default_factory=Lock)
+    fingerprint_secret: bytes = field(
+        default_factory=lambda: token_bytes(32), repr=False
+    )
 
 
-def _merge_json(existing: dict[str, Any] | None, patch: dict[str, Any]) -> dict[str, Any]:
+def _merge_json(
+    existing: dict[str, Any] | None, patch: dict[str, Any]
+) -> dict[str, Any]:
     merged = deepcopy(existing) if existing is not None else {}
     for key, value in patch.items():
         if value is None:
@@ -121,9 +128,7 @@ class _CustomerGateway(CustomerSynchronizationGateway):
     async def customer_exists(self, reference_id: int) -> bool:
         return reference_id in self._snapshot.customers
 
-    async def get_customer(
-        self, reference_id: int
-    ) -> IntegrationCustomerData | None:
+    async def get_customer(self, reference_id: int) -> IntegrationCustomerData | None:
         customer = self._snapshot.customers.get(reference_id)
         return deepcopy(customer) if customer is not None else None
 
@@ -138,15 +143,14 @@ class _CustomerGateway(CustomerSynchronizationGateway):
     ) -> None:
         current = self._snapshot.customers.get(reference_id)
         if current is None:
-            raise CustomerNotFoundException(
-                f"Customer {reference_id} does not exist"
-            )
+            raise CustomerNotFoundException(f"Customer {reference_id} does not exist")
         self._snapshot.customers[reference_id] = _apply_patch(current, data)
 
 
 class _ProcessedEventGateway(ProcessedCustomerEventGateway):
-    def __init__(self, snapshot: _Snapshot) -> None:
+    def __init__(self, snapshot: _Snapshot, fingerprint_secret: bytes) -> None:
         self._snapshot = snapshot
+        self._fingerprint_secret = fingerprint_secret
 
     async def get_processed_result(
         self, event: CustomerIntegrationEvent
@@ -154,8 +158,10 @@ class _ProcessedEventGateway(ProcessedCustomerEventGateway):
         stored = self._snapshot.processed_events.get(event.event_id)
         if stored is None:
             return None
-        stored_event, result = stored
-        if stored_event != event:
+        stored_fingerprint, result = stored
+        if not compare_digest(
+            stored_fingerprint, event_fingerprint(event, self._fingerprint_secret)
+        ):
             raise CustomerSynchronizationConflictException(
                 f"Event id {event.event_id} has different content"
             )
@@ -166,44 +172,26 @@ class _ProcessedEventGateway(ProcessedCustomerEventGateway):
         event: CustomerIntegrationEvent,
         result: CustomerSynchronizationResult,
     ) -> None:
-        stored = self._snapshot.processed_events.get(event.event_id)
-        if stored is not None and stored[0] != event:
+        stored_result = await self.get_processed_result(event)
+        if stored_result is not None and stored_result != result:
             raise CustomerSynchronizationConflictException(
-                f"Event id {event.event_id} has different content"
+                f"Event id {event.event_id} has a different result"
             )
         self._snapshot.processed_events[event.event_id] = (
-            deepcopy(event),
+            event_fingerprint(event, self._fingerprint_secret),
             deepcopy(result),
         )
 
 
-class _ResourceVersionGateway(CustomerResourceVersionGateway):
-    def __init__(self, snapshot: _Snapshot) -> None:
-        self._snapshot = snapshot
-
-    async def get_resource_version(self, reference_id: int) -> int | None:
-        return self._snapshot.resource_versions.get(reference_id)
-
-    async def save_resource_version(
-        self, reference_id: int, resource_version: int
-    ) -> None:
-        self._snapshot.resource_versions[reference_id] = resource_version
-
-
-class InMemoryCustomerSynchronizationUnitOfWork(
-    CustomerSynchronizationUnitOfWork
-):
+class InMemoryCustomerSynchronizationUnitOfWork(CustomerSynchronizationUnitOfWork):
     def __init__(self, store: InMemoryCustomerSynchronizationStore) -> None:
         self._store = store
         self._snapshot = _Snapshot()
         self.customers: CustomerSynchronizationGateway = _CustomerGateway(
             self._snapshot
         )
-        self.processed_events: ProcessedCustomerEventGateway = (
-            _ProcessedEventGateway(self._snapshot)
-        )
-        self.resource_versions: CustomerResourceVersionGateway = (
-            _ResourceVersionGateway(self._snapshot)
+        self.processed_events: ProcessedCustomerEventGateway = _ProcessedEventGateway(
+            self._snapshot, self._store.fingerprint_secret
         )
         self._active = False
         self._commit_requested = False
@@ -241,8 +229,9 @@ class InMemoryCustomerSynchronizationUnitOfWork(
     def _replace_snapshot(self, snapshot: _Snapshot) -> None:
         self._snapshot = snapshot
         self.customers = _CustomerGateway(snapshot)
-        self.processed_events = _ProcessedEventGateway(snapshot)
-        self.resource_versions = _ResourceVersionGateway(snapshot)
+        self.processed_events = _ProcessedEventGateway(
+            snapshot, self._store.fingerprint_secret
+        )
 
     def _require_active(self) -> None:
         if not self._active:

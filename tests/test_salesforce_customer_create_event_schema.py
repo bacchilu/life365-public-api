@@ -45,7 +45,6 @@ def test_create_event_requires_every_envelope_field(
     ("field_name", "invalid_values"),
     [
         ("schemaVersion", [0, 2, 1.0, True, "1"]),
-        ("resourceVersion", [0, 2, 1.0, True, "1"]),
         ("eventType", ["customer.updated", "customer.deleted", None]),
         ("eventId", ["not-a-uuid", 1, None]),
         (
@@ -66,9 +65,7 @@ def test_create_event_rejects_invalid_envelope_values(
 ) -> None:
     for invalid in invalid_values:
         with pytest.raises(ValidationError) as error:
-            CustomerCreatedEventRequest.model_validate(
-                {**event, field_name: invalid}
-            )
+            CustomerCreatedEventRequest.model_validate({**event, field_name: invalid})
 
         assert error.value.errors()[0]["loc"] == (field_name,)
 
@@ -105,9 +102,7 @@ def test_create_event_schema_exposes_the_full_nested_contract(
     assert set(schema["required"]) == set(event)
     assert schema["additionalProperties"] is False
     assert schema["properties"]["eventType"]["const"] == "customer.created"
-    assert schema["properties"]["data"]["$ref"] == (
-        "#/$defs/IntegrationCustomerData"
-    )
+    assert schema["properties"]["data"]["$ref"] == ("#/$defs/IntegrationCustomerData")
 
 
 def test_create_event_schema_uses_strict_version_bounds() -> None:
@@ -116,5 +111,11 @@ def test_create_event_schema_uses_strict_version_bounds() -> None:
     assert schema["properties"]["schemaVersion"]["type"] == "integer"
     assert schema["properties"]["schemaVersion"]["minimum"] == 1
     assert schema["properties"]["schemaVersion"]["maximum"] == 1
-    assert schema["properties"]["resourceVersion"]["minimum"] == 1
-    assert schema["properties"]["resourceVersion"]["maximum"] == 1
+    assert "resourceVersion" not in schema["properties"]
+
+
+def test_create_event_rejects_removed_resource_version(event: dict[str, Any]) -> None:
+    with pytest.raises(ValidationError) as error:
+        CustomerCreatedEventRequest.model_validate({**event, "resourceVersion": 1})
+    assert error.value.errors()[0]["loc"] == ("resourceVersion",)
+    assert error.value.errors()[0]["type"] == "extra_forbidden"

@@ -1,6 +1,6 @@
 import json
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import UUID
 
@@ -24,9 +24,7 @@ from app.application.dtos.customer_integration.profile_patch import (
 from app.application.exceptions import (
     CustomerNotFoundException,
     CustomerSynchronizationConflictException,
-    CustomerVersionGapException,
     InvalidCustomerReferenceException,
-    StaleCustomerVersionException,
 )
 from app.application.services.customer_synchronization_service import (
     CustomerSynchronizationService,
@@ -64,13 +62,11 @@ def _create(
     data: IntegrationCustomerData,
     *,
     event_number: int = 1,
-    version: int = 1,
 ) -> CustomerCreatedEvent:
     return CustomerCreatedEvent(
         schema_version=1,
         event_id=UUID(int=event_number),
         occurred_at=_OCCURRED_AT,
-        resource_version=version,
         data=data,
     )
 
@@ -79,14 +75,12 @@ def _update(
     reference_id: int,
     *,
     event_number: int = 2,
-    version: int = 2,
     patch: CustomerUpdatedData | None = None,
 ) -> CustomerUpdatedEvent:
     return CustomerUpdatedEvent(
         schema_version=1,
         event_id=UUID(int=event_number),
         occurred_at=_OCCURRED_AT,
-        resource_version=version,
         reference_id=reference_id,
         data=patch if patch is not None else CustomerUpdatedData(),
     )
@@ -112,7 +106,6 @@ async def test_create_stores_the_full_customer_and_generated_id(
     async with InMemoryCustomerSynchronizationUnitOfWork(store) as work:
         assert await work.customers.get_customer(1) == customer_data
         assert await work.customers.get_customer(2) == customer_data
-        assert await work.resource_versions.get_resource_version(1) == 1
         assert await work.processed_events.get_processed_result(first_event) == first
 
 
@@ -147,7 +140,6 @@ async def test_update_applies_a_nested_patch_and_saves_its_result(
         assert customer.company.website is None
         assert customer.company.primary_phone == ""
         assert customer.communication_preferences.newsletter is False
-        assert await work.resource_versions.get_resource_version(1) == 2
         assert await work.processed_events.get_processed_result(event) == updated
 
 
@@ -178,7 +170,6 @@ async def test_replay_returns_the_original_result_without_another_change(
         customer = await work.customers.get_customer(1)
         assert customer is not None
         assert customer.company.name == "New name"
-        assert await work.resource_versions.get_resource_version(1) == 2
 
 
 @pytest.mark.anyio
@@ -203,7 +194,6 @@ async def test_same_event_id_with_different_content_is_a_conflict(
 
     async with InMemoryCustomerSynchronizationUnitOfWork(store) as work:
         assert await work.customers.get_customer(1) == customer_data
-        assert await work.resource_versions.get_resource_version(1) == 1
         assert await work.processed_events.get_processed_result(original) is not None
 
 
@@ -223,7 +213,6 @@ async def test_update_of_a_missing_customer_does_not_save_the_event(
 
     async with InMemoryCustomerSynchronizationUnitOfWork(store) as work:
         assert await work.customers.get_customer(42) is None
-        assert await work.resource_versions.get_resource_version(42) is None
         assert await work.processed_events.get_processed_result(event) is None
 
 
@@ -242,16 +231,36 @@ async def test_update_rejects_a_nonpositive_reference(
 
 
 @pytest.mark.anyio
-@pytest.mark.parametrize(
-    ("version", "error_type"),
-    [
-        (1, StaleCustomerVersionException),
-        (3, CustomerVersionGapException),
+async def test_existing_customer_needs_no_sync_history(
+    customer_data: IntegrationCustomerData,
+    sync_context: tuple[
+        CustomerSynchronizationService,
+        InMemoryCustomerSynchronizationStore,
+        InMemoryCustomerSynchronizationUnitOfWork,
     ],
-)
-async def test_update_rejects_stale_and_skipped_versions(
-    version: int,
-    error_type: type[Exception],
+) -> None:
+    service, store, _ = sync_context
+    async with InMemoryCustomerSynchronizationUnitOfWork(store) as work:
+        reference_id = await work.customers.create_customer(customer_data)
+        await work.commit()
+    assert not store.snapshot.processed_events
+    event = _update(
+        reference_id,
+        patch=CustomerUpdatedData(
+            company=IntegrationCompanyPatch(name="Existing customer")
+        ),
+    )
+    result = await service.synchronize_customer(event)
+
+    async with InMemoryCustomerSynchronizationUnitOfWork(store) as work:
+        customer = await work.customers.get_customer(reference_id)
+        assert customer is not None
+        assert customer.company.name == "Existing customer"
+        assert await work.processed_events.get_processed_result(event) == result
+
+
+@pytest.mark.anyio
+async def test_occurred_at_does_not_order_or_reject_updates(
     customer_data: IntegrationCustomerData,
     sync_context: tuple[
         CustomerSynchronizationService,
@@ -261,35 +270,29 @@ async def test_update_rejects_stale_and_skipped_versions(
 ) -> None:
     service, store, _ = sync_context
     await service.synchronize_customer(_create(customer_data))
-    event = _update(1, version=version)
-
-    with pytest.raises(error_type):
-        await service.synchronize_customer(event)
-
-    async with InMemoryCustomerSynchronizationUnitOfWork(store) as work:
-        assert await work.customers.get_customer(1) == customer_data
-        assert await work.resource_versions.get_resource_version(1) == 1
-        assert await work.processed_events.get_processed_result(event) is None
-
-
-@pytest.mark.anyio
-async def test_create_rejects_a_version_other_than_one(
-    customer_data: IntegrationCustomerData,
-    sync_context: tuple[
-        CustomerSynchronizationService,
-        InMemoryCustomerSynchronizationStore,
-        InMemoryCustomerSynchronizationUnitOfWork,
-    ],
-) -> None:
-    service, store, _ = sync_context
-    event = _create(customer_data, version=2)
-
-    with pytest.raises(CustomerSynchronizationConflictException):
-        await service.synchronize_customer(event)
+    newer = _update(
+        1,
+        patch=CustomerUpdatedData(
+            company=IntegrationCompanyPatch(name="Newer timestamp")
+        ),
+    )
+    older = replace(
+        newer,
+        event_id=UUID(int=3),
+        occurred_at=_OCCURRED_AT - timedelta(days=1),
+        data=CustomerUpdatedData(
+            company=IntegrationCompanyPatch(name="Later delivery")
+        ),
+    )
+    await service.synchronize_customer(newer)
+    await service.synchronize_customer(older)
+    await service.synchronize_customer(newer)
 
     async with InMemoryCustomerSynchronizationUnitOfWork(store) as work:
-        assert await work.customers.get_customer(1) is None
-        assert await work.processed_events.get_processed_result(event) is None
+        customer = await work.customers.get_customer(1)
+        assert customer is not None
+        assert customer.company.name == "Later delivery"
+        assert len(store.snapshot.processed_events) == 3
 
 
 @pytest.mark.anyio
@@ -314,5 +317,4 @@ async def test_commit_failure_returns_no_success_and_rolls_back(
 
     async with InMemoryCustomerSynchronizationUnitOfWork(store) as work:
         assert await work.customers.get_customer(1) is None
-        assert await work.resource_versions.get_resource_version(1) is None
         assert await work.processed_events.get_processed_result(event) is None

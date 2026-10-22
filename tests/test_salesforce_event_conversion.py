@@ -61,7 +61,6 @@ def test_complete_create_fixture_reaches_application_without_data_loss() -> None
     assert event.schema_version == request.schema_version
     assert event.event_id == request.event_id
     assert event.occurred_at == request.occurred_at
-    assert event.resource_version == request.resource_version
     assert _normalize(event.data) == _normalize(request.data.model_dump())
 
 
@@ -72,7 +71,6 @@ def test_nested_update_reaches_application_without_meaning_changes() -> None:
             "eventId": "726c7c74-287d-44f2-b060-81fefa3d235d",
             "occurredAt": "2026-09-22T10:00:00Z",
             "eventType": "customer.updated",
-            "resourceVersion": 2,
             "referenceId": 42,
             "data": {
                 "company": {"website": None, "primaryPhone": ""},

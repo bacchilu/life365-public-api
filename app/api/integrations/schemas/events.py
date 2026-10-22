@@ -16,7 +16,6 @@ class _CustomerEventRequestBase(IntegrationRequestModel):
     schema_version: StrictInt = Field(alias="schemaVersion", ge=1, le=1)
     event_id: UUID = Field(alias="eventId")
     occurred_at: AwareDatetime = Field(alias="occurredAt")
-    resource_version: StrictInt = Field(alias="resourceVersion", gt=0)
 
     @field_validator("occurred_at", mode="before")
     @classmethod
@@ -33,13 +32,11 @@ class _CustomerEventRequestBase(IntegrationRequestModel):
 
 
 class CustomerCreatedEventRequest(_CustomerEventRequestBase):
-    resource_version: StrictInt = Field(alias="resourceVersion", ge=1, le=1)
     event_type: Literal["customer.created"] = Field(alias="eventType")
     data: IntegrationCustomerData
 
 
 class CustomerUpdatedEventRequest(_CustomerEventRequestBase):
-    resource_version: StrictInt = Field(alias="resourceVersion", gt=1)
     event_type: Literal["customer.updated"] = Field(alias="eventType")
     reference_id: StrictInt = Field(alias="referenceId", gt=0)
     data: CustomerUpdatedData

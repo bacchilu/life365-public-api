@@ -23,14 +23,23 @@ os.environ.setdefault("DATABASE_URL", "postgresql://localhost/test")
 
 import app.api.integrations.routes as integration_routes
 from app.api.dependencies import get_auth_service
+from app.api.integrations.converters.events import convert_customer_event
+from app.api.integrations.schemas.events import CustomerCreatedEventRequest
 from app.application.domain import PrincipalIdentity, PrincipalType, Role
 from app.application.exceptions import AuthenticationException
 from app.application.ports import CredentialsGateway
 from app.application.services.auth_service import AuthService
 from app.infrastructure.auth import PyJWTTokenCodec
 from app.infrastructure.data_mapper.auth import InMemoryTokenSessionDataMapper
+from app.infrastructure.data_mapper.customer_sync.customers import (
+    PostgreSQLCustomerDataMapper,
+)
+from app.infrastructure.data_mapper.customer_sync.unit_of_work import (
+    PostgreSQLCustomerSynchronizationUnitOfWork,
+)
 from app.infrastructure.data_mapper.customer_synchronization import (
     InMemoryCustomerSynchronizationStore,
+    InMemoryCustomerSynchronizationUnitOfWork,
 )
 from app.main import app
 
@@ -45,7 +54,6 @@ _CREATE_FIXTURE = (
 _URL = "/integrations/salesforce/events"
 _TEST_TABLES = (
     "customer_synchronization_events",
-    "customer_synchronization_versions",
     "customers",
     "regions",
     "countries",
@@ -104,16 +112,20 @@ def _isolated_database() -> Iterator[str]:
         try:
             conn.execute(_SCHEMA.read_text(encoding="utf-8"))
             conn.execute(_MIGRATION.read_text(encoding="utf-8"))
+            conn.execute(
+                (
+                    _MIGRATION.parent / "0002_remove_customer_resource_versions.sql"
+                ).read_text(encoding="utf-8")
+            )
             yield url
         finally:
             conn.execute(
                 sql.SQL(
                     "DROP TABLE IF EXISTS "
                     "public.customer_synchronization_events, "
-                    "public.customer_synchronization_versions, "
                     "public.customers, public.regions, public.countries, "
                     "public.categories, public.agents, public.sales_channels, "
-                    "public.payment_types, public.shop_groups CASCADE"
+                    "public.payment_types, public.shop_groups"
                 )
             )
 
@@ -192,33 +204,28 @@ def _update_payload(reference_id: int) -> dict[str, Any]:
         "schemaVersion": 1,
         "eventId": str(uuid4()),
         "occurredAt": "2026-09-26T10:00:00Z",
-        "resourceVersion": 2,
         "eventType": "customer.updated",
         "referenceId": reference_id,
         "data": {
             "company": {"website": None, "primaryPhone": ""},
             "commercial": {"paymentDays": 0},
             "notes": {"items": []},
-            "extensions": {
-                "parameters": {"nested": {"remove": None, "flag": False}}
-            },
+            "extensions": {"parameters": {"nested": {"remove": None, "flag": False}}},
         },
     }
 
 
-def _counts(backend: _Backend) -> tuple[int, int, int]:
+def _counts(backend: _Backend) -> tuple[int, int]:
     if backend.database_url is None:
         snapshot = backend.store.snapshot
         return (
             len(snapshot.customers),
-            len(snapshot.resource_versions),
             len(snapshot.processed_events),
         )
     with psycopg.connect(backend.database_url) as conn:
         counts: list[int] = []
         for table in (
             "customers",
-            "customer_synchronization_versions",
             "customer_synchronization_events",
         ):
             query = sql.SQL("SELECT count(*) FROM {}").format(
@@ -227,11 +234,11 @@ def _counts(backend: _Backend) -> tuple[int, int, int]:
             row = conn.execute(query).fetchone()
             assert row is not None
             counts.append(row[0])
-    return counts[0], counts[1], counts[2]
+    return counts[0], counts[1]
 
 
 @pytest.mark.anyio
-async def test_jwt_create_update_replay_and_version_rules(
+async def test_jwt_create_update_replay_and_conflict_rules(
     backend: _Backend, caplog: pytest.LogCaptureFixture
 ) -> None:
     payload = _create_payload()
@@ -241,52 +248,43 @@ async def test_jwt_create_update_replay_and_version_rules(
             created = await client.post(_URL, json=payload, headers=headers)
             assert created.status_code == 200, created.text
             reference_id = created.json()["referenceId"]
-            assert _counts(backend) == (1, 1, 1)
+            assert _counts(backend) == (1, 1)
 
             replay = await client.post(_URL, json=payload, headers=headers)
             assert replay.status_code == 200
             assert replay.json() == created.json()
-            assert _counts(backend) == (1, 1, 1)
+            assert _counts(backend) == (1, 1)
 
             update = _update_payload(reference_id)
             updated = await client.post(_URL, json=update, headers=headers)
             assert updated.status_code == 200, updated.text
             assert updated.json()["referenceId"] == reference_id
-            assert _counts(backend) == (1, 1, 2)
+            assert _counts(backend) == (1, 2)
 
             update_replay = await client.post(_URL, json=update, headers=headers)
             assert update_replay.status_code == 200
             assert update_replay.json() == updated.json()
-            assert _counts(backend) == (1, 1, 2)
+            assert _counts(backend) == (1, 2)
 
             changed = json.loads(json.dumps(update))
             changed["data"]["company"]["primaryPhone"] = "changed"
             conflict = await client.post(_URL, json=changed, headers=headers)
             assert conflict.status_code == 409
 
-            stale = json.loads(json.dumps(update))
-            stale["eventId"] = str(uuid4())
-            stale_response = await client.post(_URL, json=stale, headers=headers)
-            assert stale_response.status_code == 409
-            gap = json.loads(json.dumps(update))
-            gap["eventId"] = str(uuid4())
-            gap["resourceVersion"] = 4
-            gap_response = await client.post(_URL, json=gap, headers=headers)
-            assert gap_response.status_code == 409
             missing = _update_payload(reference_id + 999)
             missing_response = await client.post(_URL, json=missing, headers=headers)
             assert missing_response.status_code == 404
 
-    assert _counts(backend) == (1, 1, 2)
+    assert _counts(backend) == (1, 2)
     if backend.database_url is None:
         stored = backend.store.snapshot.customers[reference_id]
         assert stored.company.website is None
         assert stored.company.primary_phone == ""
         assert stored.commercial.payment_days == 0
         assert stored.extensions.parameters == {
-            "keep": "original", "nested": {"retain": 1, "flag": False}
+            "keep": "original",
+            "nested": {"retain": 1, "flag": False},
         }
-        assert backend.store.snapshot.resource_versions[reference_id] == 2
     else:
         with psycopg.connect(backend.database_url, row_factory=dict_row) as conn:
             row = conn.execute(
@@ -300,16 +298,9 @@ async def test_jwt_create_update_replay_and_version_rules(
             assert row["business_name"] == "ACME Italia SRL"
             assert row["registration_ip"] == "127.0.0.1"
             assert row["parameters"] == {
-                "keep": "original", "nested": {"retain": 1, "flag": False}
+                "keep": "original",
+                "nested": {"retain": 1, "flag": False},
             }
-            version = conn.execute(
-                sql.SQL(
-                    "SELECT resource_version FROM "
-                    "public.customer_synchronization_versions WHERE customer_id = %s"
-                ),
-                (reference_id,),
-            ).fetchone()
-            assert version is not None and version["resource_version"] == 2
 
     assert f"event_id={payload['eventId']}" in caplog.text
     assert f"reference_id={reference_id}" in caplog.text
@@ -325,7 +316,74 @@ async def test_missing_token_and_non_admin_cannot_write(backend: _Backend) -> No
         buyer_headers = await _headers(client, "buyer")
         forbidden = await client.post(_URL, json=payload, headers=buyer_headers)
         assert forbidden.status_code == 403
-    assert _counts(backend) == (0, 0, 0)
+    assert _counts(backend) == (0, 0)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("event_type", ["customer.created", "customer.updated"])
+async def test_removed_resource_version_is_rejected_without_mutation(
+    backend: _Backend, event_type: str
+) -> None:
+    payload = (
+        _create_payload() if event_type == "customer.created" else _update_payload(1)
+    )
+    payload["resourceVersion"] = 1
+    async with _client() as client:
+        headers = await _headers(client, "admin")
+        response = await client.post(_URL, json=payload, headers=headers)
+    assert response.status_code == 422
+    assert any(
+        error["type"] == "extra_forbidden" and error["loc"][-1] == "resourceVersion"
+        for error in response.json()["detail"]
+    )
+    assert _counts(backend) == (0, 0)
+
+
+@pytest.mark.anyio
+async def test_existing_customer_can_receive_first_update(backend: _Backend) -> None:
+    event = convert_customer_event(
+        CustomerCreatedEventRequest.model_validate(_create_payload())
+    )
+    if backend.database_url is None:
+        async with InMemoryCustomerSynchronizationUnitOfWork(backend.store) as work:
+            reference_id = await work.customers.create_customer(event.data)
+            await work.commit()
+    else:
+        async with PostgreSQLCustomerSynchronizationUnitOfWork(
+            connection_string=backend.database_url,
+            fingerprint_secret=b"test-customer-sync-hmac-key-32-bytes",
+            customer_mapper_factory=lambda cur: PostgreSQLCustomerDataMapper(
+                cur, registration_ip="127.0.0.1"
+            ),
+        ) as work:
+            reference_id = await work.customers.create_customer(event.data)
+            await work.commit()
+    assert _counts(backend) == (1, 0)
+    async with _client() as client:
+        headers = await _headers(client, "admin")
+        response = await client.post(
+            _URL, json=_update_payload(reference_id), headers=headers
+        )
+    assert response.status_code == 200, response.text
+    assert response.json()["referenceId"] == reference_id
+    assert _counts(backend) == (1, 1)
+
+
+@pytest.mark.anyio
+async def test_concurrent_conflicting_event_ids_commit_only_one_customer(
+    backend: _Backend,
+) -> None:
+    first = _create_payload()
+    second = json.loads(json.dumps(first))
+    second["data"]["company"]["name"] = "Conflicting customer"
+    async with _client() as client:
+        headers = await _headers(client, "admin")
+        results = await asyncio.gather(
+            client.post(_URL, json=first, headers=headers),
+            client.post(_URL, json=second, headers=headers),
+        )
+    assert sorted(result.status_code for result in results) == [200, 409]
+    assert _counts(backend) == (1, 1)
 
 
 @pytest.mark.anyio
@@ -341,7 +399,38 @@ async def test_simultaneous_delivery_returns_one_committed_result(
         )
     assert first.status_code == second.status_code == 200
     assert first.json() == second.json()
-    assert _counts(backend) == (1, 1, 1)
+    assert _counts(backend) == (1, 1)
+
+
+@pytest.mark.anyio
+async def test_timestamps_are_metadata_and_replay_cannot_restore_old_values(
+    backend: _Backend,
+) -> None:
+    async with _client() as client:
+        headers = await _headers(client, "admin")
+        created = await client.post(_URL, json=_create_payload(), headers=headers)
+        assert created.status_code == 200, created.text
+        reference_id = created.json()["referenceId"]
+        first = _update_payload(reference_id)
+        first["data"] = {"company": {"name": "First change"}}
+        second = _update_payload(reference_id)
+        second["occurredAt"] = "2020-01-01T00:00:00Z"
+        second["data"] = {"company": {"name": "Later delivery"}}
+        for payload in (first, second, first):
+            response = await client.post(_URL, json=payload, headers=headers)
+            assert response.status_code == 200, response.text
+    assert _counts(backend) == (1, 3)
+    if backend.database_url is None:
+        assert (
+            backend.store.snapshot.customers[reference_id].company.name
+            == "Later delivery"
+        )
+    else:
+        with psycopg.connect(backend.database_url) as conn:
+            assert conn.execute(
+                "SELECT business_name FROM public.customers WHERE id = %s",
+                (reference_id,),
+            ).fetchone() == ("Later delivery",)
 
 
 @pytest.mark.anyio
@@ -376,7 +465,7 @@ async def test_postgresql_create_requires_ipv4_but_update_does_not(
                 _URL, json=_create_payload(), headers=headers
             )
             assert invalid_create.status_code == 422
-            assert _counts(backend) == (0, 0, 0)
+            assert _counts(backend) == (0, 0)
 
             created = await ipv4_client.post(
                 _URL, json=_create_payload(), headers=headers
@@ -387,7 +476,7 @@ async def test_postgresql_create_requires_ipv4_but_update_does_not(
                 _URL, json=_update_payload(reference_id), headers=headers
             )
             assert updated.status_code == 200
-            assert _counts(backend) == (1, 1, 2)
+            assert _counts(backend) == (1, 2)
 
     with psycopg.connect(backend.database_url) as conn:
         row = conn.execute(
@@ -410,13 +499,13 @@ async def test_postgresql_validation_and_sql_failure_roll_back(
         headers = await _headers(client, "admin")
         rejected = await client.post(_URL, json=invalid, headers=headers)
         assert rejected.status_code == 422
-        assert _counts(backend) == (0, 0, 0)
+        assert _counts(backend) == (0, 0)
 
         valid = _create_payload()
         created = await client.post(_URL, json=valid, headers=headers)
         assert created.status_code == 200
         reference_id = created.json()["referenceId"]
-        assert _counts(backend) == (1, 1, 1)
+        assert _counts(backend) == (1, 1)
 
         with psycopg.connect(backend.database_url) as conn:
             conn.execute(
@@ -429,7 +518,7 @@ async def test_postgresql_validation_and_sql_failure_roll_back(
         update["data"] = {"company": {"name": "Rejected by DB"}}
         failed = await client.post(_URL, json=update, headers=headers)
         assert failed.status_code == 503
-        assert _counts(backend) == (1, 1, 1)
+        assert _counts(backend) == (1, 1)
 
     with psycopg.connect(backend.database_url) as conn:
         row = conn.execute(

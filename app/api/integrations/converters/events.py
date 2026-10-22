@@ -28,7 +28,6 @@ def convert_customer_event(
             schema_version=schema_version,
             event_id=source.event_id,
             occurred_at=source.occurred_at,
-            resource_version=source.resource_version,
             reference_id=source.reference_id,
             data=convert_customer_patch(source.data),
         )
@@ -38,7 +37,6 @@ def convert_customer_event(
             schema_version=schema_version,
             event_id=source.event_id,
             occurred_at=source.occurred_at,
-            resource_version=source.resource_version,
             data=convert_customer_data(source.data),
         )
 

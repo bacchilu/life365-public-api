@@ -16,7 +16,9 @@ Deployment steps, authenticated `curl` examples, retries, and response codes
 are in [the synchronization runbook](SALESFORCE_CUSTOMER_SYNC_RUNBOOK.md).
 
 The contract uses camelCase JSON property names. A breaking contract change
-requires a new `schemaVersion`.
+normally requires a new `schemaVersion`. By agreement, this revision removes
+`resourceVersion` while keeping `schemaVersion: 1`. Requests that still include
+`resourceVersion` are rejected with HTTP 422.
 
 ## Event Envelope
 
@@ -27,7 +29,6 @@ Every request is one customer event.
 | `schemaVersion` | `number` | Yes | Contract version. The only version defined here is integer `1`. |
 | `eventId` | `string` | Yes | UUID that identifies one event and supports idempotent retries. |
 | `occurredAt` | `string` | Yes | RFC 3339 timestamp with a UTC offset. |
-| `resourceVersion` | `number` | Yes | Positive integer sequence for this customer resource. |
 | `eventType` | `string` | Yes | One of `customer.created` or `customer.updated`. |
 | `referenceId` | `number` | By event | Positive integer Life365 customer ID. |
 | `data` | `object` | By event | Complete customer data or a customer patch. |
@@ -58,17 +59,21 @@ contract version without implying physical or cascading database deletion.
 `eventId` returns the stored result without applying another mutation. Reusing
 an `eventId` with different event content is a conflict.
 
-`resourceVersion` provides ordering independently of `occurredAt`:
-
-- A create event uses `resourceVersion: 1`.
-- An update must use the previous accepted version plus one.
-- A lower or equal version is stale and is rejected.
-- A version greater than the next expected value has a gap and is rejected.
-- A valid replay identified by `eventId` returns its stored result before the
-  version check causes another mutation.
+There is no server-side resource sequence or stale-event rejection. The sender
+must serialize events for each customer and wait for a successful response
+before sending the next event for that customer. After a timeout, lost response,
+or uncertain result, retry the same `eventId` with identical complete content
+before proceeding. Do not generate a new event ID for a retry. Different
+customers can be synchronized concurrently. Database row locks protect atomic
+patches but do not restore business ordering for incorrectly ordered deliveries.
 
 `occurredAt` remains audit information. Clock differences, equal timestamps,
 and delayed delivery make it unsuitable as the ordering key.
+
+The migration that removes version state clears the processed-event history.
+Events completed before that reset no longer have duplicate protection. Do not
+replay historical events as if their history still existed; reconcile uncertain
+events before the reset. See the runbook for the deployment procedure.
 
 ## Create Data
 
@@ -399,9 +404,8 @@ The implementation must preserve unknown keys that the patch does not mention.
 
 - UUID values use the standard hyphenated string representation.
 - Date-time values use RFC 3339 and include `Z` or an explicit UTC offset.
-- Customer and agent `referenceId` values, `resourceVersion`, `paymentDays`,
-  and `paymentDaysEndOfMonth` are JSON integers. Reference identifiers and
-  `resourceVersion` are positive.
+- Customer and agent `referenceId` values, `paymentDays`, and
+  `paymentDaysEndOfMonth` are JSON integers. Reference identifiers are positive.
 - Financial and tax decimal values are JSON strings, such as `"10000.00"`, so
   JSON number conversion cannot lose decimal precision.
 - Country codes use uppercase ISO 3166-1 alpha-2 values. Address region names
@@ -434,9 +438,10 @@ This contract describes integration data. It does not expose Salesforce
 Life365 table relationships. The Life365 infrastructure adapter is responsible
 for translating reference objects and values into local database identifiers.
 
-The contract defines validation, conflict, idempotency, and ordering behavior.
-The durable processed-event and resource-version storage required to enforce
-those rules must be implemented before PostgreSQL writes are enabled.
+The contract defines validation, conflicts, idempotency, and sender-side ordering.
+The durable processed-event store commits together with each customer change.
+Existing customers can receive updates without prior synchronization history.
+No resource-version table or ordering checks are used.
 
 The current database mapping audit and its remaining implementation
 prerequisites are documented in

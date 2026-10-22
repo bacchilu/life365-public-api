@@ -19,11 +19,9 @@ from app.application.exceptions import (
     AuthorizationException,
     CustomerNotFoundException,
     CustomerSynchronizationConflictException,
-    CustomerVersionGapException,
     DBException,
     InvalidCustomerDataException,
     InvalidCustomerReferenceException,
-    StaleCustomerVersionException,
 )
 from app.application.services.customer_synchronization_service import (
     CustomerSynchronizationService,
@@ -109,12 +107,10 @@ def _log_event(
         else logger.warning
     )
     log(
-        "customer_sync event_id=%s reference_id=%s event_type=%s "
-        "resource_version=%s status=%s",
+        "customer_sync event_id=%s reference_id=%s event_type=%s status=%s",
         payload.event_id,
         reference_id,
         payload.event_type,
-        payload.resource_version,
         code,
     )
 
@@ -125,10 +121,14 @@ def _log_event(
     description=(
         "Create or update a Life365 customer from a Salesforce event. "
         "Only an authenticated admin can send events. PostgreSQL mode commits "
-        "the customer, event result, and resource version in one transaction. "
+        "the customer and event result in one transaction. "
         "Memory mode is temporary and does not survive a restart. Repeat the "
         "same eventId with identical content to retrieve its original result. "
-        "Updates require the next consecutive resourceVersion."
+        "Send events for each customer one at a time and wait for success. "
+        "After a timeout, retry the same event with identical content before "
+        "sending the next event. Different customers may be sent concurrently. "
+        "occurredAt is metadata and does not control ordering. "
+        "resourceVersion is not accepted."
     ),
     response_model=SalesforceEventResponse,
     responses={
@@ -136,7 +136,7 @@ def _log_event(
         401: {"description": "Missing or invalid bearer token"},
         403: {"description": "Admin role required"},
         404: {"description": "Customer to update does not exist"},
-        409: {"description": "Event conflict or invalid resource version"},
+        409: {"description": "Event ID reuse or customer data conflict"},
         422: {"description": "Invalid event payload or customer data"},
         503: {"description": "Customer persistence is unavailable"},
     },
@@ -184,11 +184,7 @@ async def receive_salesforce_event(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
         ) from exc
-    except (
-        CustomerSynchronizationConflictException,
-        CustomerVersionGapException,
-        StaleCustomerVersionException,
-    ) as exc:
+    except CustomerSynchronizationConflictException as exc:
         _log_event(
             payload,
             status.HTTP_409_CONFLICT,

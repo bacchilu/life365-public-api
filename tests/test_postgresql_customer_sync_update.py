@@ -58,7 +58,6 @@ from app.application.exceptions import (
     CustomerSynchronizationConflictException,
     DBException,
     InvalidCustomerDataException,
-    StaleCustomerVersionException,
 )
 from app.application.services.customer_synchronization_service import (
     CustomerSynchronizationService,
@@ -79,7 +78,6 @@ _FIXTURE = _ROOT / "tests/fixtures/integrations/salesforce/customer-created-v1.j
 _KEY = b"test-customer-sync-hmac-key-32-bytes"
 _TABLES = (
     "customer_synchronization_events",
-    "customer_synchronization_versions",
     "customers",
     "regions",
     "countries",
@@ -96,9 +94,12 @@ def test_database_url() -> Iterator[str]:
     url = os.environ.get("CUSTOMER_SYNC_TEST_DATABASE_URL")
     if url is None:
         pytest.skip("Set CUSTOMER_SYNC_TEST_DATABASE_URL to an isolated database")
-    if not conninfo_to_dict(url).get("dbname", "").startswith(
-        "life365_public_api_test_"
-    ) or os.environ.get("DATABASE_URL") == url:
+    if (
+        not conninfo_to_dict(url)
+        .get("dbname", "")
+        .startswith("life365_public_api_test_")
+        or os.environ.get("DATABASE_URL") == url
+    ):
         pytest.fail("Customer update tests require a dedicated test database")
 
     with psycopg.connect(url, autocommit=True) as conn:
@@ -114,16 +115,20 @@ def test_database_url() -> Iterator[str]:
         try:
             conn.execute(_SCHEMA.read_text(encoding="utf-8"))
             conn.execute(_MIGRATION.read_text(encoding="utf-8"))
+            conn.execute(
+                (
+                    _MIGRATION.parent / "0002_remove_customer_resource_versions.sql"
+                ).read_text(encoding="utf-8")
+            )
             yield url
         finally:
             conn.execute(
                 sql.SQL(
                     "DROP TABLE IF EXISTS "
                     "public.customer_synchronization_events, "
-                    "public.customer_synchronization_versions, "
                     "public.customers, public.regions, public.countries, "
                     "public.categories, public.agents, public.sales_channels, "
-                    "public.payment_types, public.shop_groups CASCADE"
+                    "public.payment_types, public.shop_groups"
                 )
             )
 
@@ -148,19 +153,17 @@ def _create_event(data: IntegrationCustomerData, number: int) -> CustomerCreated
         schema_version=1,
         event_id=UUID(int=number),
         occurred_at=datetime(2026, 9, 25, 10, 0, tzinfo=UTC),
-        resource_version=1,
         data=data,
     )
 
 
 def _update_event(
-    reference_id: int, version: int, data: CustomerUpdatedData, number: int
+    reference_id: int, data: CustomerUpdatedData, number: int
 ) -> CustomerUpdatedEvent:
     return CustomerUpdatedEvent(
         schema_version=1,
         event_id=UUID(int=number),
-        occurred_at=datetime(2026, 9, 25, 10, version, tzinfo=UTC),
-        resource_version=version,
+        occurred_at=datetime(2026, 9, 25, 10, 0, tzinfo=UTC),
         reference_id=reference_id,
         data=data,
     )
@@ -177,26 +180,18 @@ async def _create_customer(
     return result.reference_id
 
 
-def _state(url: str, reference_id: int) -> tuple[dict[str, Any], int, int]:
+def _state(url: str, reference_id: int) -> tuple[dict[str, Any], int]:
     with psycopg.connect(url, row_factory=dict_row) as conn:
         row = conn.execute(
             sql.SQL("SELECT * FROM public.customers WHERE id = %s"),
             (reference_id,),
         ).fetchone()
         assert row is not None
-        version = conn.execute(
-            sql.SQL(
-                "SELECT resource_version FROM public.customer_synchronization_versions "
-                "WHERE customer_id = %s"
-            ),
-            (reference_id,),
-        ).fetchone()
-        assert version is not None
         count = conn.execute(
             sql.SQL("SELECT count(*) AS n FROM public.customer_synchronization_events")
         ).fetchone()
         assert count is not None
-        return row, version["resource_version"], count["n"]
+        return row, count["n"]
 
 
 @pytest.mark.anyio
@@ -215,7 +210,7 @@ async def test_partial_patch_preserves_siblings_and_merges_json(
         ),
     )
     reference_id = await _create_customer(test_database_url, data)
-    before, _, _ = _state(test_database_url, reference_id)
+    before, _ = _state(test_database_url, reference_id)
 
     patch = CustomerUpdatedData(
         company=IntegrationCompanyPatch(
@@ -247,10 +242,10 @@ async def test_partial_patch_preserves_siblings_and_merges_json(
     )
     await CustomerSynchronizationService(
         _unit_of_work(test_database_url)
-    ).synchronize_customer(_update_event(reference_id, 2, patch, 2))
+    ).synchronize_customer(_update_event(reference_id, patch, 2))
 
-    after, version, count = _state(test_database_url, reference_id)
-    assert (version, count) == (2, 2)
+    after, count = _state(test_database_url, reference_id)
+    assert count == 2
     assert after["business_name"] == "ACME Updated"
     assert after["website"] is None
     assert after["phone2"] == ""
@@ -295,8 +290,8 @@ async def test_address_and_reference_changes_are_explicit(
         ),
     )
     service = CustomerSynchronizationService(_unit_of_work(test_database_url))
-    await service.synchronize_customer(_update_event(reference_id, 2, first, 2))
-    row, _, _ = _state(test_database_url, reference_id)
+    await service.synchronize_customer(_update_event(reference_id, first, 2))
+    row, _ = _state(test_database_url, reference_id)
     assert row["delivery_address"] is None
     assert row["delivery_city"] is None
     assert row["delivery_region_id"] is None
@@ -321,9 +316,9 @@ async def test_address_and_reference_changes_are_explicit(
             )
         ),
     )
-    await service.synchronize_customer(_update_event(reference_id, 3, second, 3))
-    row, version, count = _state(test_database_url, reference_id)
-    assert (version, count) == (3, 3)
+    await service.synchronize_customer(_update_event(reference_id, second, 3))
+    row, count = _state(test_database_url, reference_id)
+    assert count == 3
     assert row["region_id"] == 159
     assert row["address_street"] == "Via Roma 10"
     assert row["delivery_address"] == "Via Nuova 1"
@@ -343,7 +338,6 @@ async def test_invalid_patch_or_failed_sql_leaves_row_and_event_unchanged(
         await service.synchronize_customer(
             _update_event(
                 reference_id,
-                2,
                 CustomerUpdatedData(
                     company=IntegrationCompanyPatch(name="Should not persist"),
                     commercial=IntegrationCommercialPatch(
@@ -364,7 +358,6 @@ async def test_invalid_patch_or_failed_sql_leaves_row_and_event_unchanged(
         await service.synchronize_customer(
             _update_event(
                 reference_id,
-                2,
                 CustomerUpdatedData(company=IntegrationCompanyPatch(name="X" * 121)),
                 3,
             )
@@ -375,7 +368,6 @@ async def test_invalid_patch_or_failed_sql_leaves_row_and_event_unchanged(
         await service.synchronize_customer(
             _update_event(
                 reference_id,
-                2,
                 CustomerUpdatedData(
                     tax_profile=IntegrationTaxProfilePatch(
                         fiscal_code=None, vat_number=None
@@ -388,7 +380,7 @@ async def test_invalid_patch_or_failed_sql_leaves_row_and_event_unchanged(
 
 
 @pytest.mark.anyio
-async def test_failure_after_update_rolls_back_customer_and_version(
+async def test_failure_after_update_rolls_back_customer_and_event(
     test_database_url: str,
 ) -> None:
     reference_id = await _create_customer(test_database_url)
@@ -400,7 +392,6 @@ async def test_failure_after_update_rolls_back_customer_and_version(
                 reference_id,
                 CustomerUpdatedData(company=IntegrationCompanyPatch(name="Temporary")),
             )
-            await work.resource_versions.save_resource_version(reference_id, 2)
             await work.commit()
             raise RuntimeError("stop before commit")
 
@@ -408,17 +399,34 @@ async def test_failure_after_update_rolls_back_customer_and_version(
 
 
 @pytest.mark.anyio
-async def test_concurrent_updates_reject_the_stale_version(
+async def test_concurrent_updates_preserve_unrelated_json_keys(
     test_database_url: str,
 ) -> None:
-    reference_id = await _create_customer(test_database_url)
+    original = _customer_data()
+    data = replace(
+        original,
+        extensions=replace(
+            original.extensions, parameters={"keep": True, "nested": {"original": 1}}
+        ),
+    )
+    reference_id = await _create_customer(test_database_url, data)
     first = _update_event(
-        reference_id, 2,
-        CustomerUpdatedData(company=IntegrationCompanyPatch(name="First")), 2
+        reference_id,
+        CustomerUpdatedData(
+            extensions=IntegrationCustomerExtensionsPatch(
+                parameters={"nested": {"first": 2}}
+            )
+        ),
+        2,
     )
     second = _update_event(
-        reference_id, 2,
-        CustomerUpdatedData(company=IntegrationCompanyPatch(name="Second")), 3
+        reference_id,
+        CustomerUpdatedData(
+            extensions=IntegrationCustomerExtensionsPatch(
+                parameters={"nested": {"second": 3}}
+            )
+        ),
+        3,
     )
 
     async def deliver(event: CustomerUpdatedEvent) -> CustomerSynchronizationResult:
@@ -426,16 +434,14 @@ async def test_concurrent_updates_reject_the_stale_version(
             _unit_of_work(test_database_url)
         ).synchronize_customer(event)
 
-    results = await asyncio.gather(
-        deliver(first), deliver(second), return_exceptions=True
-    )
-    assert sum(not isinstance(result, BaseException) for result in results) == 1
-    assert sum(
-        isinstance(result, StaleCustomerVersionException) for result in results
-    ) == 1
-    row, version, count = _state(test_database_url, reference_id)
-    assert row["business_name"] in ("First", "Second")
-    assert (version, count) == (2, 2)
+    results = await asyncio.gather(deliver(first), deliver(second))
+    assert all(result.success for result in results)
+    row, count = _state(test_database_url, reference_id)
+    assert row["parameters"] == {
+        "keep": True,
+        "nested": {"original": 1, "first": 2, "second": 3},
+    }
+    assert count == 3
 
 
 @pytest.mark.anyio
@@ -450,23 +456,25 @@ async def test_login_update_keeps_own_name_but_rejects_another_customer(
     service = CustomerSynchronizationService(_unit_of_work(test_database_url))
     await service.synchronize_customer(
         _update_event(
-            first_id, 2,
+            first_id,
             CustomerUpdatedData(
                 credentials=IntegrationCustomerCredentialsPatch(login=" ACME-ITALIA ")
-            ), 3
+            ),
+            3,
         )
     )
     with pytest.raises(CustomerSynchronizationConflictException, match="login"):
         await service.synchronize_customer(
             _update_event(
-                second_id, 2,
+                second_id,
                 CustomerUpdatedData(
                     credentials=IntegrationCustomerCredentialsPatch(login="acme-italia")
-                ), 4
+                ),
+                4,
             )
         )
-    first, _, _ = _state(test_database_url, first_id)
-    second, second_version, count = _state(test_database_url, second_id)
+    first, _ = _state(test_database_url, first_id)
+    second, count = _state(test_database_url, second_id)
     assert first["login"] == "ACME-ITALIA"
     assert second["login"] == "other-login"
-    assert (second_version, count) == (1, 3)
+    assert count == 3

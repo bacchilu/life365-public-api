@@ -76,7 +76,6 @@ async def test_commit_closes_the_transaction(
     async with work:
         assert work.customers is not None
         assert work.processed_events is not None
-        assert work.resource_versions is not None
         await work.commit()
 
     assert connection.commits == 1

@@ -21,10 +21,9 @@ from app.application.dtos.customer_integration.events import (
 from app.application.ports import (
     CheckGateway,
     CredentialsGateway,
-    CustomerResourceVersionGateway,
+    CustomersGateway,
     CustomerSynchronizationGateway,
     CustomerSynchronizationUnitOfWork,
-    CustomersGateway,
     Life365APIGateway,
     ProcessedCustomerEventGateway,
     ProductsGateway,
@@ -47,9 +46,7 @@ class FakeProductsGateway:
 
 
 class FakeCustomersGateway:
-    async def get_customers(
-        self, limit: int = 100, offset: int = 0
-    ) -> list[Customer]:
+    async def get_customers(self, limit: int = 100, offset: int = 0) -> list[Customer]:
         return [Customer(id=1, login="customer", email="customer@example.com")]
 
 
@@ -133,24 +130,10 @@ class FakeProcessedCustomerEventGateway(ProcessedCustomerEventGateway):
         self.result = result
 
 
-class FakeCustomerResourceVersionGateway(CustomerResourceVersionGateway):
-    def __init__(self) -> None:
-        self.versions: dict[int, int] = {}
-
-    async def get_resource_version(self, reference_id: int) -> int | None:
-        return self.versions.get(reference_id)
-
-    async def save_resource_version(
-        self, reference_id: int, resource_version: int
-    ) -> None:
-        self.versions[reference_id] = resource_version
-
-
 class FakeCustomerSynchronizationUnitOfWork(CustomerSynchronizationUnitOfWork):
     def __init__(self) -> None:
         self.customers = FakeCustomerSynchronizationGateway()
         self.processed_events = FakeProcessedCustomerEventGateway()
-        self.resource_versions = FakeCustomerResourceVersionGateway()
         self.committed = False
         self.rolled_back = False
 
@@ -226,9 +209,7 @@ async def test_credentials_gateway_contract_methods() -> None:
 
 @pytest.mark.anyio
 async def test_token_session_gateway_contract_methods() -> None:
-    gateway: TokenSessionGateway = _as_token_session_gateway(
-        FakeTokenSessionGateway()
-    )
+    gateway: TokenSessionGateway = _as_token_session_gateway(FakeTokenSessionGateway())
     issued_at = datetime.now(timezone.utc)
     session = TokenSession(
         token_id="token-id",
@@ -298,11 +279,9 @@ async def test_customer_synchronization_unit_of_work_contract() -> None:
     async with unit_of_work:
         reference_id = await unit_of_work.customers.create_customer(customer_data)
         await unit_of_work.customers.update_customer(reference_id, customer_patch)
-        await unit_of_work.resource_versions.save_resource_version(reference_id, 1)
         await unit_of_work.processed_events.save_processed_result(event, result)
         await unit_of_work.commit()
 
     assert await unit_of_work.customers.customer_exists(42) is True
-    assert await unit_of_work.resource_versions.get_resource_version(42) == 1
     assert await unit_of_work.processed_events.get_processed_result(event) == result
     assert unit_of_work.committed is True

@@ -16,7 +16,6 @@ class CustomerCreatedEvent:
     schema_version: Literal[1]
     event_id: UUID
     occurred_at: datetime
-    resource_version: int
     data: IntegrationCustomerData
     event_type: Literal["customer.created"] = field(
         default="customer.created", init=False
@@ -28,7 +27,6 @@ class CustomerUpdatedEvent:
     schema_version: Literal[1]
     event_id: UUID
     occurred_at: datetime
-    resource_version: int
     reference_id: int
     data: CustomerUpdatedData
     event_type: Literal["customer.updated"] = field(

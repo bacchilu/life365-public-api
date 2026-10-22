@@ -33,10 +33,9 @@ _INSERT_EVENT = sql.SQL(
         schema_version,
         event_type,
         occurred_at,
-        resource_version,
         result_success,
         result_reference_id
-    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+    ) VALUES (%s, %s, %s, %s, %s, %s, %s)
     ON CONFLICT (event_id) DO NOTHING
     RETURNING event_id
     """
@@ -76,9 +75,7 @@ class PostgreSQLProcessedCustomerEventDataMapper(ProcessedCustomerEventGateway):
             raise CustomerSynchronizationConflictException(
                 f"Event id {event.event_id} has different content"
             )
-        return CustomerSynchronizationResult(
-            success=success, reference_id=reference_id
-        )
+        return CustomerSynchronizationResult(success=success, reference_id=reference_id)
 
     async def get_processed_result(
         self, event: CustomerIntegrationEvent
@@ -108,7 +105,6 @@ class PostgreSQLProcessedCustomerEventDataMapper(ProcessedCustomerEventGateway):
                 event.schema_version,
                 event.event_type,
                 event.occurred_at,
-                event.resource_version,
                 result.success,
                 result.reference_id,
             ),

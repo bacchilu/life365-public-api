@@ -1,4 +1,4 @@
-"""Create a stable event fingerprint without storing customer credentials."""
+"""Fingerprint the version-free event contract without storing credentials."""
 
 import hashlib
 import hmac

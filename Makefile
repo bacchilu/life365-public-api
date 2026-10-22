@@ -28,6 +28,7 @@ test:
 test-postgresql: docker-test-db-up
 	CUSTOMER_SYNC_TEST_DATABASE_URL=$(CUSTOMER_SYNC_TEST_DATABASE_URL) \
 		./.venv/bin/pytest -q \
+		tests/test_postgresql_customer_sync_migration.py \
 		tests/test_postgresql_customer_sync_transactions.py \
 		tests/test_postgresql_customer_sync_create.py \
 		tests/test_postgresql_customer_sync_update.py \

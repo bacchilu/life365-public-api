@@ -165,7 +165,6 @@ async def test_failure_after_commit_request_keeps_customer_and_event_unchanged(
         schema_version=1,
         event_id=UUID("726c7c74-287d-44f2-b060-81fefa3d235d"),
         occurred_at=customer_data.registration.registered_at,
-        resource_version=1,
         data=customer_data,
     )
     patch = CustomerUpdatedData(company=IntegrationCompanyPatch(name="New name"))
@@ -173,7 +172,6 @@ async def test_failure_after_commit_request_keeps_customer_and_event_unchanged(
         schema_version=1,
         event_id=UUID("726c7c74-287d-44f2-b060-81fefa3d235e"),
         occurred_at=created.occurred_at,
-        resource_version=2,
         reference_id=1,
         data=patch,
     )
@@ -181,23 +179,26 @@ async def test_failure_after_commit_request_keeps_customer_and_event_unchanged(
 
     async with InMemoryCustomerSynchronizationUnitOfWork(store) as work:
         await work.customers.create_customer(customer_data)
-        await work.resource_versions.save_resource_version(1, 1)
         await work.processed_events.save_processed_result(created, result)
         await work.commit()
 
     with pytest.raises(RuntimeError, match="later failure"):
         async with InMemoryCustomerSynchronizationUnitOfWork(store) as work:
             await work.customers.update_customer(1, patch)
-            await work.resource_versions.save_resource_version(1, 2)
             await work.processed_events.save_processed_result(updated, result)
             await work.commit()
             raise RuntimeError("later failure")
 
     async with InMemoryCustomerSynchronizationUnitOfWork(store) as work:
         assert await work.customers.get_customer(1) == customer_data
-        assert await work.resource_versions.get_resource_version(1) == 1
         assert await work.processed_events.get_processed_result(created) == result
         assert await work.processed_events.get_processed_result(updated) is None
+    fingerprint, stored_result = store.snapshot.processed_events[created.event_id]
+    assert isinstance(fingerprint, bytes) and len(fingerprint) == 32
+    assert stored_result == result
+    assert customer_data.credentials.password not in repr(
+        store.snapshot.processed_events
+    )
 
 
 @pytest.mark.anyio

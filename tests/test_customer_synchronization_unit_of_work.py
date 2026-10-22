@@ -32,26 +32,23 @@ def _event(*, occurred_at: datetime = _OCCURRED_AT) -> CustomerCreatedEvent:
         schema_version=1,
         event_id=_EVENT_ID,
         occurred_at=occurred_at,
-        resource_version=1,
         data=_customer_data(),
     )
 
 
 @pytest.mark.anyio
-async def test_commit_saves_customer_event_and_version_together() -> None:
+async def test_commit_saves_customer_and_event_together() -> None:
     store = InMemoryCustomerSynchronizationStore()
     event = _event()
     result = CustomerSynchronizationResult(success=True, reference_id=1)
 
     async with InMemoryCustomerSynchronizationUnitOfWork(store) as unit_of_work:
-        reference_id = await unit_of_work.customers.create_customer(event.data)
-        await unit_of_work.resource_versions.save_resource_version(reference_id, 1)
+        await unit_of_work.customers.create_customer(event.data)
         await unit_of_work.processed_events.save_processed_result(event, result)
         await unit_of_work.commit()
 
     async with InMemoryCustomerSynchronizationUnitOfWork(store) as unit_of_work:
         assert await unit_of_work.customers.customer_exists(1) is True
-        assert await unit_of_work.resource_versions.get_resource_version(1) == 1
         assert await unit_of_work.processed_events.get_processed_result(event) == result
 
 
@@ -72,15 +69,11 @@ async def test_exception_rolls_back_all_changes() -> None:
 
     with pytest.raises(RuntimeError, match="stop transaction"):
         async with InMemoryCustomerSynchronizationUnitOfWork(store) as unit_of_work:
-            reference_id = await unit_of_work.customers.create_customer(
-                _customer_data()
-            )
-            await unit_of_work.resource_versions.save_resource_version(reference_id, 1)
+            await unit_of_work.customers.create_customer(_customer_data())
             raise RuntimeError("stop transaction")
 
     async with InMemoryCustomerSynchronizationUnitOfWork(store) as unit_of_work:
         assert await unit_of_work.customers.customer_exists(1) is False
-        assert await unit_of_work.resource_versions.get_resource_version(1) is None
 
 
 @pytest.mark.anyio
@@ -105,6 +98,4 @@ async def test_reused_event_id_with_different_content_is_a_conflict() -> None:
     conflicting_event = _event(occurred_at=_OCCURRED_AT + timedelta(seconds=1))
     async with InMemoryCustomerSynchronizationUnitOfWork(store) as unit_of_work:
         with pytest.raises(CustomerSynchronizationConflictException):
-            await unit_of_work.processed_events.get_processed_result(
-                conflicting_event
-            )
+            await unit_of_work.processed_events.get_processed_result(conflicting_event)

@@ -26,13 +26,5 @@ class InvalidCustomerDataException(CustomerSynchronizationException):
     """Raised when event data cannot map to a valid Life365 customer."""
 
 
-class StaleCustomerVersionException(CustomerSynchronizationException):
-    """Raised when an event version is older than the stored version."""
-
-
-class CustomerVersionGapException(CustomerSynchronizationException):
-    """Raised when one or more customer event versions are missing."""
-
-
 class CustomerSynchronizationConflictException(CustomerSynchronizationException):
     """Raised when an event conflicts with the stored customer state."""

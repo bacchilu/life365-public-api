@@ -64,18 +64,9 @@ class ProcessedCustomerEventGateway(Protocol):
     ) -> None: ...
 
 
-class CustomerResourceVersionGateway(Protocol):
-    async def get_resource_version(self, reference_id: int) -> int | None: ...
-
-    async def save_resource_version(
-        self, reference_id: int, resource_version: int
-    ) -> None: ...
-
-
 class CustomerSynchronizationUnitOfWork(Protocol):
     customers: CustomerSynchronizationGateway
     processed_events: ProcessedCustomerEventGateway
-    resource_versions: CustomerResourceVersionGateway
 
     async def __aenter__(self) -> Self: ...
 
@@ -92,9 +83,7 @@ class CustomerSynchronizationUnitOfWork(Protocol):
 
 
 class OrdersGateway(Protocol):
-    async def get_orders(
-        self, limit: int = 100, offset: int = 0
-    ) -> list[Order]: ...
+    async def get_orders(self, limit: int = 100, offset: int = 0) -> list[Order]: ...
 
 
 class Life365APIGateway(Protocol):

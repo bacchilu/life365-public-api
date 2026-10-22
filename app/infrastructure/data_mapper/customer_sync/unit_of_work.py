@@ -9,23 +9,19 @@ from psycopg.rows import TupleRow
 
 from app.application.exceptions import DBException
 from app.application.ports import (
-    CustomerResourceVersionGateway,
     CustomerSynchronizationGateway,
     CustomerSynchronizationUnitOfWork,
     ProcessedCustomerEventGateway,
 )
 
 from .events import PostgreSQLProcessedCustomerEventDataMapper
-from .versions import PostgreSQLCustomerResourceVersionDataMapper
 
 CustomerMapperFactory = Callable[
     [psycopg.AsyncCursor[TupleRow]], CustomerSynchronizationGateway
 ]
 
 
-class PostgreSQLCustomerSynchronizationUnitOfWork(
-    CustomerSynchronizationUnitOfWork
-):
+class PostgreSQLCustomerSynchronizationUnitOfWork(CustomerSynchronizationUnitOfWork):
     def __init__(
         self,
         connection_string: str,
@@ -41,7 +37,6 @@ class PostgreSQLCustomerSynchronizationUnitOfWork(
         self._cursor: psycopg.AsyncCursor[TupleRow] | None = None
         self._customers: CustomerSynchronizationGateway | None = None
         self._processed_events: ProcessedCustomerEventGateway | None = None
-        self._resource_versions: CustomerResourceVersionGateway | None = None
         self._commit_requested = False
 
     @property
@@ -64,16 +59,6 @@ class PostgreSQLCustomerSynchronizationUnitOfWork(
     def processed_events(self, gateway: ProcessedCustomerEventGateway) -> None:
         self._processed_events = gateway
 
-    @property
-    def resource_versions(self) -> CustomerResourceVersionGateway:
-        if self._resource_versions is None:
-            raise RuntimeError("The unit of work has no active transaction")
-        return self._resource_versions
-
-    @resource_versions.setter
-    def resource_versions(self, gateway: CustomerResourceVersionGateway) -> None:
-        self._resource_versions = gateway
-
     async def __aenter__(self) -> Self:
         if self._connection is not None:
             raise RuntimeError("The unit of work already has an active transaction")
@@ -91,7 +76,6 @@ class PostgreSQLCustomerSynchronizationUnitOfWork(
             processed_events = PostgreSQLProcessedCustomerEventDataMapper(
                 cursor, self._fingerprint_secret
             )
-            resource_versions = PostgreSQLCustomerResourceVersionDataMapper(cursor)
         except BaseException:
             await connection.close()
             raise
@@ -100,7 +84,6 @@ class PostgreSQLCustomerSynchronizationUnitOfWork(
         self._cursor = cursor
         self.customers = customers
         self.processed_events = processed_events
-        self.resource_versions = resource_versions
         self._commit_requested = False
         return self
 
@@ -127,7 +110,6 @@ class PostgreSQLCustomerSynchronizationUnitOfWork(
             self._cursor = None
             self._customers = None
             self._processed_events = None
-            self._resource_versions = None
             self._commit_requested = False
             try:
                 await cursor.close()
