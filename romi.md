@@ -111,7 +111,7 @@ restituisce HTTP `200` con `success`, `eventId` e `referenceId`.
 
 ## Documentazione interattiva
 
-La [Swagger UI dell'ambiente di test](https://test.gnurun.com/docs) permette di
+La [Swagger UI dell'ambiente di test](https://test.gnurun.com/api/public/v1/docs) permette di
 consultare gli schemi e provare gli endpoint.
 
 Eseguire `/auth/login`, copiare `access_token`, selezionare **Authorize** e
