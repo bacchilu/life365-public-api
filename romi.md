@@ -18,20 +18,66 @@ Consultare i documenti in questo ordine:
 La [mappatura PostgreSQL](docs/integrations/SALESFORCE_CUSTOMER_POSTGRESQL_MAPPING_V1.md)
 descrive come Life365 traduce i campi ricevuti nel proprio database.
 
+## Ambiente sandbox
+
+La sandbox espone gli stessi endpoint sotto `/sandbox`, ma usa esclusivamente il
+database PostgreSQL locale `life365_sandbox`. Le chiamate senza questo prefisso
+mantengono la configurazione esistente: non sono automaticamente chiamate di test.
+
+Gli esempi di questa guida utilizzano la sandbox locale:
+
+```bash
+API_URL='http://127.0.0.1:8000/sandbox'
+```
+
+| Operazione | URL locale |
+|---|---|
+| Autenticazione | `http://127.0.0.1:8000/sandbox/auth/login` |
+| Creazione e aggiornamento customer | `http://127.0.0.1:8000/sandbox/integrations/salesforce/events` |
+| Logout | `http://127.0.0.1:8000/sandbox/auth/logout` |
+| Swagger | `http://127.0.0.1:8000/sandbox/docs` |
+
+Per avviare l'ambiente, configurare le variabili `SANDBOX_DATABASE_HOST`,
+`SANDBOX_DATABASE_PORT`, `SANDBOX_DB_PASSWORD`, `SANDBOX_JWT_SECRET_KEY` e
+`SANDBOX_CUSTOMER_SYNC_FINGERPRINT_SECRET` come descritto nella
+[guida della sandbox](docs/SANDBOX_API.md), quindi eseguire `make run` oppure
+`make docker-dev-up`. Questi comandi avviano anche PostgreSQL. Non modificare il
+`DATABASE_URL` di produzione. Se la configurazione sandbox manca o non è valida,
+le sue operazioni restituiscono HTTP `503`, senza ripiegare sulla produzione.
+
+Dietro il reverse proxy, il prefisso `/sandbox` segue quello dell'applicazione:
+ad esempio `https://b2b.life365.eu/public-api/sandbox`. Questo URL è utilizzabile
+solo dopo il deploy e la configurazione della sandbox su quell'ambiente;
+l'esistenza del codice locale non ne garantisce la disponibilità remota.
+
+## Credenziali locali Salesforce
+
+Il seed del database locale include questo account applicativo:
+
+| Campo | Valore |
+|---|---|
+| Username | `salesforce` |
+| Password in chiaro | `romi` |
+| `principal_type` | `user` |
+| Ruolo | `admin` |
+
+Sono **credenziali di esempio della sandbox**, non credenziali Salesforce OAuth
+né credenziali di produzione. Non usare questo ambiente con dati sensibili e non
+esporlo a utenti non autorizzati.
+
 ## Autenticazione
 
 Gli esempi richiedono `curl` e si eseguono dalla cartella principale del
-repository. Prima dei test, verificare con Life365 che l'ambiente utilizzi il
-database di collaudo.
+repository. Verificare che `API_URL` includa `/sandbox` prima di inviare i test.
 
 ```bash
-API_URL='https://test.gnurun.com'
+API_URL='http://127.0.0.1:8000/sandbox'
 
 curl --fail-with-body -sS -X POST "$API_URL/auth/login" \
   -H 'Content-Type: application/json' \
   --data-raw '{
-    "username": "<UTENTE_ADMIN>",
-    "password": "<PASSWORD>",
+    "username": "salesforce",
+    "password": "romi",
     "principal_type": "user"
   }'
 ```
@@ -43,7 +89,10 @@ AUTH_TOKEN='<ACCESS_TOKEN>'
 ```
 
 Il token deve appartenere a un utente con ruolo **admin**. Le credenziali reali
-devono essere fornite separatamente e non inserite nel repository.
+di produzione devono essere fornite separatamente e non inserite nel repository.
+Un token sandbox non funziona sugli endpoint esistenti e viceversa: la risposta
+è HTTP `401`. Per cambiare ambiente occorre autenticarsi nuovamente sul relativo
+endpoint.
 
 ## Creare un customer
 
@@ -93,6 +142,31 @@ Usare la data effettiva dell'evento. Questo esempio aggiorna il nome e cancella
 il sito web; gli altri campi rimangono invariati. Anche un aggiornamento riuscito
 restituisce HTTP `200` con `success`, `eventId` e `referenceId`.
 
+## Logout dalla sandbox
+
+```bash
+curl --fail-with-body -sS -X POST "$API_URL/auth/logout" \
+  -H "Authorization: Bearer $AUTH_TOKEN"
+```
+
+Il logout revoca soltanto la sessione sandbox corrente. Le sessioni sandbox sono
+in memoria, separate dal file SQLite dell'applicazione esistente: dopo un riavvio
+o reload dell'API occorre autenticarsi di nuovo. Usare un solo worker API.
+
+## Limiti e durata dei dati sandbox
+
+- Creazione, aggiornamenti e storico degli eventi vengono salvati solo nel
+  database locale. Le operazioni di sincronizzazione richiedono il ruolo admin.
+- Le raccomandazioni prodotto restituiscono HTTP `501`: non viene effettuata
+  alcuna chiamata al servizio esterno. Gli eventi ricevuti non generano chiamate
+  in uscita verso Salesforce.
+- PostgreSQL usa memoria temporanea: fermare il suo container elimina sia la
+  sandbox sia il database separato dei test automatici. All'avvio successivo
+  vengono ripristinati i dati di esempio, non le modifiche fatte durante i test.
+- Dopo un reset del database, riavviare anche l'API e autenticarsi di nuovo.
+  Lo storico degli eventi è perso: non reinviare vecchi eventi confidando nella
+  precedente protezione dai duplicati.
+
 ## Regole da rispettare
 
 - `schemaVersion` resta `1`. **Non inviare `resourceVersion`**: viene rifiutato
@@ -111,8 +185,13 @@ restituisce HTTP `200` con `success`, `eventId` e `referenceId`.
 
 ## Documentazione interattiva
 
+La [Swagger UI della sandbox locale](http://127.0.0.1:8000/sandbox/docs)
+permette di consultare gli stessi schemi ed eseguire chiamate sul database locale.
+Autenticarsi con `salesforce` / `romi` tramite `/sandbox/auth/login`.
+
 La [Swagger UI di produzione](https://b2b.life365.eu/public-api/docs)
-permette di consultare gli schemi e provare gli endpoint.
+usa invece l'ambiente esistente e richiede le sue credenziali, non quelle della
+sandbox.
 
 Eseguire `/auth/login`, copiare `access_token`, selezionare **Authorize** e
 inserire il token. Le chiamate eseguite da Swagger modificano realmente i dati
