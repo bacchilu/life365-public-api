@@ -14,6 +14,12 @@ services:
     init: true
     profiles:
       - dev
+    depends_on:
+      local-postgres:
+        condition: service_healthy
+    networks:
+      - default
+      - local-database
     ports:
       - "8000:8000"
     volumes:
@@ -43,12 +49,16 @@ services:
     init: true
     profiles:
       - prod
+    depends_on:
+      local-postgres:
+        condition: service_healthy
     expose:
       - "8000"
     volumes:
       - ./data:/data
     networks:
       - life365-shared
+      - local-database
     restart: unless-stopped
 
   scheduler:
@@ -69,27 +79,43 @@ services:
       - /app/crons/jobs.cron
     restart: unless-stopped
 
-  customer-sync-test-db:
+  local-postgres:
     image: postgres:18.6
     profiles:
+      - dev
+      - prod
       - test
     environment:
-      POSTGRES_DB: life365_public_api_test_customer_sync
-      POSTGRES_USER: customer_sync_test
-      POSTGRES_PASSWORD: customer_sync_test
+      POSTGRES_DB: postgres
+      POSTGRES_USER: life365_local_admin
+      POSTGRES_PASSWORD: "${LOCAL_POSTGRES_ADMIN_PASSWORD:-local_admin_only}"
+      SANDBOX_DB_PASSWORD: "${SANDBOX_DB_PASSWORD:-sandbox_local_only}"
+      CUSTOMER_SYNC_TEST_PASSWORD: "${CUSTOMER_SYNC_TEST_PASSWORD:-customer_sync_test}"
     ports:
       - "127.0.0.1:55432:5432"
     tmpfs:
-      - /var/lib/postgresql
+      - "/var/lib/postgresql:size=${LOCAL_POSTGRES_TMPFS_SIZE:-512m},mode=0755"
+    volumes:
+      - ./docker/postgres/init-databases.sh:/docker-entrypoint-initdb.d/init-databases.sh:ro
+      - ./docker/postgres/sandbox:/opt/life365-sandbox:ro
+      - ./migrations:/opt/life365-migrations:ro
+    networks:
+      - local-database
     healthcheck:
       test:
         - CMD-SHELL
-        - pg_isready -U customer_sync_test -d life365_public_api_test_customer_sync
+        - >-
+          PGPASSWORD="$$POSTGRES_PASSWORD" psql -X -h 127.0.0.1
+          -U "$$POSTGRES_USER" -d postgres -Atqc
+          "SELECT count(*) = 2 FROM pg_database WHERE datname IN
+          ('life365_sandbox', 'life365_public_api_test_customer_sync')"
+          | grep -qx t
       interval: 2s
       timeout: 2s
-      retries: 15
+      retries: 30
 
 networks:
+  local-database:
   life365-shared:
     external: true
     name: life365-shared

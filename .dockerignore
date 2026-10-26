@@ -15,3 +15,5 @@ node_modules
 data
 docs
 tests
+.sandbox-db
+scripts

@@ -6,7 +6,7 @@ HOST_USER_ID := $(shell id -u)
 HOST_GROUP_ID := $(shell id -g)
 DOCKER_COMPOSE := USER_ID=$(HOST_USER_ID) GROUP_ID=$(HOST_GROUP_ID) docker compose
 SHARED_DOCKER_NETWORK := life365-shared
-CUSTOMER_SYNC_TEST_DATABASE_URL := postgresql://customer_sync_test:customer_sync_test@127.0.0.1:55432/life365_public_api_test_customer_sync
+LOCAL_DB := python3 -m scripts.local_postgres
 
 update:
 	python3 -m venv .venv
@@ -19,44 +19,38 @@ build:
 	rm -rf .venv/.gitignore
 	./.venv/bin/pip3 install -r requirements-lock.txt
 
-run:
+run: docker-test-db-up
 	./.venv/bin/fastapi dev app/main.py
 
 test:
 	./.venv/bin/pytest
 
 test-postgresql: docker-test-db-up
-	CUSTOMER_SYNC_TEST_DATABASE_URL=$(CUSTOMER_SYNC_TEST_DATABASE_URL) \
-		./.venv/bin/pytest -q \
-		tests/test_postgresql_customer_sync_migration.py \
-		tests/test_postgresql_customer_sync_transactions.py \
-		tests/test_postgresql_customer_sync_create.py \
-		tests/test_postgresql_customer_sync_update.py \
-		tests/test_salesforce_integration_backends.py
+	$(LOCAL_DB) test
 
 docker-network:
 	docker network inspect $(SHARED_DOCKER_NETWORK) >/dev/null 2>&1 || docker network create $(SHARED_DOCKER_NETWORK)
 
-docker-dev-up:
+docker-dev-up: docker-test-db-up
 	$(DOCKER_COMPOSE) --profile dev build api-dev
-	@trap '$(DOCKER_COMPOSE) --profile dev down' EXIT; \
-		$(DOCKER_COMPOSE) --profile dev up --no-build --pull never
+	@trap '$(DOCKER_COMPOSE) --profile dev rm --stop --force api-dev scheduler' EXIT; \
+		$(DOCKER_COMPOSE) --profile dev up --no-deps --no-build --pull never api-dev scheduler
 
 docker-dev-down:
-	$(DOCKER_COMPOSE) --profile dev down
+	$(DOCKER_COMPOSE) --profile dev rm --stop --force api-dev scheduler
 
-docker-prod-up: docker-network
+docker-prod-up: docker-network docker-test-db-up
 	$(DOCKER_COMPOSE) --profile prod build life365-public-api
-	$(DOCKER_COMPOSE) --profile prod up --detach --no-build --pull never
+	$(DOCKER_COMPOSE) --profile prod up --detach --no-deps --no-build --pull never life365-public-api scheduler
 
 docker-prod-down:
-	$(DOCKER_COMPOSE) --profile prod down
+	$(DOCKER_COMPOSE) --profile prod rm --stop --force life365-public-api scheduler
 
 docker-test-db-up:
-	$(DOCKER_COMPOSE) --profile test up --detach --wait --wait-timeout 60 customer-sync-test-db
+	$(LOCAL_DB) up
 
 docker-test-db-down:
-	$(DOCKER_COMPOSE) --profile test rm --stop --force --volumes customer-sync-test-db
+	$(LOCAL_DB) stop
 
 clean:
 	find . -name "*.pyc" -delete

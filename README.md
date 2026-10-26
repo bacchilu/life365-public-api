@@ -105,6 +105,35 @@ The production service joins the external `life365-shared` network and exposes
 port `8000` only to containers on that network. The production Make target
 creates the shared network when it does not already exist.
 
+## Local PostgreSQL
+
+`make run`, `make docker-dev-up`, `make docker-prod-up`, and
+`make docker-test-db-up` start and wait for the same `postgres:18.6` service.
+An already running database container is reused without restarting it.
+
+- `life365_sandbox` starts with a small, sanitized production-derived sample:
+  7 customers, 12 orders, 24 order lines, and 23 products plus reference catalogs.
+- `life365_public_api_test_customer_sync` is a separate, initially empty database
+  used by `make test-postgresql`. Its user cannot connect to the sandbox, and
+  the sandbox user cannot connect to the test database.
+- Host connections use `127.0.0.1:55432`; API containers can use
+  `local-postgres:5432` on the private `local-database` network.
+
+The application's `DATABASE_URL` and existing API/scheduler behavior are
+**unchanged**. Provisioning this database does not redirect any endpoint to it.
+There is no refresh command or automatic production export. The sample is loaded
+from the versioned files under `docker/postgres/sandbox`, not from production.
+
+Storage is temporary (`tmpfs`, 512 MB maximum by default). **Stopping the
+database container loses both databases.** Starting it again restores the
+bundled sandbox seed and an empty automated-test database. API down commands
+leave the database running; `make docker-test-db-down` explicitly stops it and
+prints a data-loss warning.
+
+See [the local PostgreSQL guide](docs/LOCAL_POSTGRESQL.md) for credentials,
+sample scope, lifecycle, configuration, and verification details. FastAPI
+sandbox routing is a separate future task.
+
 Authentication sessions are stored in `/data/token-sessions.sqlite3`. Docker
 Compose bind-mounts the repository's `data` directory at `/data`; Git tracks
 the directory scaffold but ignores the generated SQLite files.
