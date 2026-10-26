@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from app.api.dependencies import get_current_user
 from app.application.domain import AuthenticatedUser
 from app.application.dtos import ProductRecommendation
+from app.application.services.products_service import ProductsService
 
 from . import composition
 
@@ -24,9 +25,13 @@ class ProductRecommendationResponse(BaseModel):
     "/products/recommend",
     summary="Recommend products",
     response_model=list[ProductRecommendationResponse],
+    responses={
+        501: {"description": "External recommendations are disabled in the sandbox"}
+    },
 )
 async def recommend_products(
     current_user: Annotated[AuthenticatedUser, Depends(get_current_user)],
+    service: Annotated[ProductsService, Depends(composition.get_products_service)],
     order_id: Annotated[int | None, Query()] = None,
     customer_id: Annotated[int | None, Query()] = None,
 ) -> list[ProductRecommendationResponse]:
@@ -56,9 +61,7 @@ async def recommend_products(
             detail="order_id/customer_id must be a positive integer",
         )
 
-    recommendations: list[
-        ProductRecommendation
-    ] = await composition.products_service.recommend_products(
+    recommendations: list[ProductRecommendation] = await service.recommend_products(
         user=current_user,
         order_id=order_id,
         customer_id=customer_id,

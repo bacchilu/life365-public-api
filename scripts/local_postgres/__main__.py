@@ -15,6 +15,7 @@ _TESTS = (
     "tests/test_postgresql_customer_sync_create.py",
     "tests/test_postgresql_customer_sync_update.py",
     "tests/test_salesforce_integration_backends.py",
+    "tests/test_sandbox_postgresql.py",
 )
 
 

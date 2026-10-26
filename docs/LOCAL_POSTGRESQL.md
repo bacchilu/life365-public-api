@@ -13,11 +13,11 @@ not a full production clone. There is no dump, refresh, or production connection
 at startup. No `sandbox-db-refresh`, `sandbox-db-up`, `sandbox-db-stop`, or
 `sandbox-db-shell` Makefile targets are introduced.
 
-The production `DATABASE_URL`, FastAPI dependencies, Caddy, and current route
-behavior are not changed. The scheduler retains its existing configuration and
-does not automatically use the sandbox. A future FastAPI sandbox context or
-routing feature must select this database explicitly and isolate external calls
-such as recommendations and Salesforce. Provisioning alone does not do that.
+The production `DATABASE_URL`, Caddy, and existing route behavior are unchanged.
+The `/sandbox` FastAPI sub-application selects this database explicitly, with
+separate authentication and disabled external business calls. See the
+[sandbox API guide](SANDBOX_API.md). The scheduler retains its existing
+configuration and does not automatically use the sandbox.
 
 ## Databases And Users
 
@@ -218,11 +218,12 @@ a local ID, role `ADMIN`, and `enabled = true`. It is included directly in
 whenever PostgreSQL initializes its empty temporary storage. The other sample
 accounts are synthetic and have no production counterparts.
 
-The currently configured HTTP API still authenticates against production,
-not these sandbox rows. Matching credentials on both sides does not change
-which database the API uses.
-FastAPI sandbox routing is a separate future task. No Salesforce or other
-external service should be contacted using remapped sandbox IDs.
+Existing HTTP routes still authenticate using their original database, not these
+sandbox rows. `/sandbox/auth/login` authenticates against the local rows instead.
+Matching usernames on both sides does not share tokens or sessions. Explicit
+sandbox settings and separate secrets are required; provisioning alone does not
+enable sandbox HTTP operations. No external business service is called from the
+sandbox; product recommendations return `501`.
 
 ## Files And Verification
 
@@ -236,8 +237,9 @@ external service should be contacted using remapped sandbox IDs.
   supplies the dedicated connection for the existing PostgreSQL test target.
 - `Makefile` integrates those helpers into existing targets without introducing
   a refresh command or project-wide shutdown.
-- `.env.example`, `.gitignore`, and `.dockerignore` document local settings and
-  exclude real secrets, local locks, and maintenance scripts from image builds.
+- `.env.example` documents local settings; `.gitignore` excludes real `.env`
+  secrets while retaining the example. `.dockerignore` also excludes local locks
+  and maintenance scripts from image builds.
 - `tests/test_local_postgres.py` checks container reuse, startup flags,
   readiness failure, localhost/identity guards, locking, and target scope
   without connecting to any database.

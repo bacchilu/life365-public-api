@@ -11,6 +11,11 @@ services:
       - .env
     environment:
       TOKEN_SESSION_DATABASE_PATH: /data/token-sessions.sqlite3
+      SANDBOX_DATABASE_HOST: local-postgres
+      SANDBOX_DATABASE_PORT: "5432"
+      SANDBOX_DB_PASSWORD: "${SANDBOX_DB_PASSWORD:-sandbox_local_only}"
+      SANDBOX_JWT_SECRET_KEY: "${SANDBOX_JWT_SECRET_KEY:-}"
+      SANDBOX_CUSTOMER_SYNC_FINGERPRINT_SECRET: "${SANDBOX_CUSTOMER_SYNC_FINGERPRINT_SECRET:-}"
     init: true
     profiles:
       - dev
@@ -46,6 +51,11 @@ services:
       - .env
     environment:
       TOKEN_SESSION_DATABASE_PATH: /data/token-sessions.sqlite3
+      SANDBOX_DATABASE_HOST: local-postgres
+      SANDBOX_DATABASE_PORT: "5432"
+      SANDBOX_DB_PASSWORD: "${SANDBOX_DB_PASSWORD:-sandbox_local_only}"
+      SANDBOX_JWT_SECRET_KEY: "${SANDBOX_JWT_SECRET_KEY:-}"
+      SANDBOX_CUSTOMER_SYNC_FINGERPRINT_SECRET: "${SANDBOX_CUSTOMER_SYNC_FINGERPRINT_SECRET:-}"
     init: true
     profiles:
       - prod

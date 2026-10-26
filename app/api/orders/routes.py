@@ -16,6 +16,10 @@ orders_gateway: OrdersGateway = PostgreSQLOrdersDataMapper(DATABASE_URL)
 order_service: OrderService = OrderService(orders_gateway)
 
 
+def get_order_service() -> OrderService:
+    return order_service
+
+
 class OrderDetailResponse(BaseModel):
     id: int
     product_id: int
@@ -69,6 +73,7 @@ def _order_to_response(order: Order) -> OrderResponse:
 )
 async def get_orders(
     current_user: Annotated[AuthenticatedUser, Depends(get_current_user)],
+    service: Annotated[OrderService, Depends(get_order_service)],
     limit: Annotated[int, Query(ge=1, le=1000)] = 100,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[OrderResponse]:
@@ -80,5 +85,5 @@ async def get_orders(
     `UNDELIVERABLE` are returned. No date or lookback filter is applied.
     Financial state remains independent and may be `PAID` or `UNPAID`.
     """
-    orders: list[Order] = await order_service.get_orders(limit=limit, offset=offset)
+    orders: list[Order] = await service.get_orders(limit=limit, offset=offset)
     return [_order_to_response(order) for order in orders]

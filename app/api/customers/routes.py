@@ -16,6 +16,10 @@ customers_gateway: CustomersGateway = PostgreSQLCustomersDataMapper(DATABASE_URL
 customer_service: CustomerService = CustomerService(customers_gateway)
 
 
+def get_customer_service() -> CustomerService:
+    return customer_service
+
+
 class CustomerResponse(BaseModel):
     id: int
     login: str
@@ -54,6 +58,7 @@ def _require_admin(user: AuthenticatedUser) -> None:
 )
 async def get_customers(
     current_user: Annotated[AuthenticatedUser, Depends(get_current_user)],
+    service: Annotated[CustomerService, Depends(get_customer_service)],
     limit: Annotated[int, Query(ge=1, le=1000)] = 100,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[CustomerResponse]:
@@ -70,7 +75,7 @@ async def get_customers(
             status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)
         ) from exc
 
-    customers: list[Customer] = await customer_service.get_customers(
+    customers: list[Customer] = await service.get_customers(
         limit=limit,
         offset=offset,
     )

@@ -8,3 +8,7 @@ life365_api_gateway: Life365APIGateway = Life365PortalAPI()
 products_service: ProductsService = ProductsService(
     products_gateway, life365_api_gateway
 )
+
+
+def get_products_service() -> ProductsService:
+    return products_service

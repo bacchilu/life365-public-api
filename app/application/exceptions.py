@@ -10,6 +10,10 @@ class AuthorizationException(Exception):
     """Raised when an authenticated principal cannot perform an action."""
 
 
+class ExternalIntegrationDisabledException(Exception):
+    """Raised when an external operation is unavailable in this environment."""
+
+
 class CustomerSynchronizationException(Exception):
     """Base error for customer synchronization failures."""
 

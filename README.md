@@ -131,8 +131,26 @@ leave the database running; `make docker-test-db-down` explicitly stops it and
 prints a data-loss warning.
 
 See [the local PostgreSQL guide](docs/LOCAL_POSTGRESQL.md) for credentials,
-sample scope, lifecycle, configuration, and verification details. FastAPI
-sandbox routing is a separate future task.
+sample scope, lifecycle, configuration, and verification details.
+
+## Sandbox API
+
+The same routes are available under `/sandbox`, with independent authentication,
+sessions, and PostgreSQL dependencies. Swagger is at
+`http://127.0.0.1:8000/sandbox/docs` (or the existing proxy prefix followed by
+`/sandbox/docs`). Existing routes still use their original configuration.
+
+Configure the explicit sandbox database settings and two separate random secrets
+in `.env`, using `.env.example` as a reference, then restart the API. Without
+valid sandbox configuration, sandbox operations return `503`; they never fall
+back to production. The local admin login is `sandbox-admin` / `sandbox-admin`
+with `principal_type: "user"`. These credentials work only on sandbox routes.
+
+See [the sandbox API guide](docs/SANDBOX_API.md) for configuration, authentication,
+create/update curl examples, isolation, unsupported external operations, and the
+single-worker session limit.
+
+## Existing Authentication Sessions
 
 Authentication sessions are stored in `/data/token-sessions.sqlite3`. Docker
 Compose bind-mounts the repository's `data` directory at `/data`; Git tracks

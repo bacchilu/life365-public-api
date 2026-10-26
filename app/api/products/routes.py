@@ -8,6 +8,7 @@ from app.api.dependencies import get_current_user
 from app.application.domain import AuthenticatedUser
 from app.application.dtos import ProductDTO
 from app.application.exceptions import AuthorizationException
+from app.application.services.products_service import ProductsService
 
 from . import composition
 
@@ -67,6 +68,7 @@ class ProductResponse(BaseModel):
 @router.get("/products", summary="List products", response_model=list[ProductResponse])
 async def get_products(
     current_user: Annotated[AuthenticatedUser, Depends(get_current_user)],
+    service: Annotated[ProductsService, Depends(composition.get_products_service)],
     limit: Annotated[int, Query(ge=1, le=1000)] = 100,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[ProductDTO]:
@@ -75,9 +77,7 @@ async def get_products(
     Use `limit` to control the number of results and `offset` to skip results.
     """
     try:
-        return await composition.products_service.get_products(
-            user=current_user, limit=limit, offset=offset
-        )
+        return await service.get_products(user=current_user, limit=limit, offset=offset)
     except AuthorizationException as exc:
         raise _authorization_exception(exc) from exc
 
@@ -90,14 +90,13 @@ async def get_products(
 async def get_product(
     product_id: Annotated[int, Path(ge=1)],
     current_user: Annotated[AuthenticatedUser, Depends(get_current_user)],
+    service: Annotated[ProductsService, Depends(composition.get_products_service)],
 ) -> ProductDTO:
     """
     Retrieve a single product by its unique ID.
     The `product_id` must be a positive integer.
     """
     try:
-        return await composition.products_service.get_product(
-            user=current_user, product_id=product_id
-        )
+        return await service.get_product(user=current_user, product_id=product_id)
     except AuthorizationException as exc:
         raise _authorization_exception(exc) from exc

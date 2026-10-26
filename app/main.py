@@ -1,17 +1,7 @@
 from fastapi import FastAPI
 
-from app.api.auth import router as auth_router
-from app.api.customers import router as customers_router
-from app.api.health import router as health_router
-from app.api.integrations import router as integrations_router
-from app.api.orders import router as orders_router
-from app.api.products import router as products_router
+from app.api.application import create_api_application
+from app.api.sandbox import create_sandbox_application
 
-app: FastAPI = FastAPI(title="Life365 Public API", version="0.1.0")
-
-app.include_router(auth_router)
-app.include_router(customers_router)
-app.include_router(health_router)
-app.include_router(integrations_router)
-app.include_router(orders_router)
-app.include_router(products_router)
+app: FastAPI = create_api_application("Life365 Public API")
+app.mount("/sandbox", create_sandbox_application(), name="sandbox")
