@@ -15,7 +15,8 @@ at startup. No `sandbox-db-refresh`, `sandbox-db-up`, `sandbox-db-stop`, or
 
 The production `DATABASE_URL`, Caddy, and existing route behavior are unchanged.
 The `/sandbox` FastAPI sub-application selects this database explicitly, with
-separate authentication and disabled external business calls. See the
+separate authentication. Product recommendations are disabled; explicit customer
+exports call the real configured Salesforce API. See the
 [sandbox API guide](SANDBOX_API.md). The scheduler retains its existing
 configuration and does not automatically use the sandbox.
 
@@ -222,8 +223,9 @@ Existing HTTP routes still authenticate using their original database, not these
 sandbox rows. `/sandbox/auth/login` authenticates against the local rows instead.
 Matching usernames on both sides does not share tokens or sessions. Explicit
 sandbox settings and separate secrets are required; provisioning alone does not
-enable sandbox HTTP operations. No external business service is called from the
-sandbox; product recommendations return `501`.
+enable sandbox HTTP operations. Product recommendations return `501`. Explicit
+customer export POST/PUT operations make real Salesforce calls using local
+customers only; see [the export guide](integrations/SALESFORCE_CUSTOMER_EXPORT.md).
 
 ## Files And Verification
 

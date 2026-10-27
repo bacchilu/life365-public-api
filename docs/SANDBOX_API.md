@@ -16,6 +16,7 @@ production connections, or production service singletons.
 | `/orders` | `/sandbox/orders` |
 | `/products` and `/products/{id}` | `/sandbox/products` and `/sandbox/products/{id}` |
 | `/integrations/salesforce/events` | `/sandbox/integrations/salesforce/events` |
+| `POST/PUT /integrations/salesforce/customers/{id}` | `POST/PUT /sandbox/integrations/salesforce/customers/{id}` |
 | `/health` | `/sandbox/health` |
 
 Swagger: <http://127.0.0.1:8000/sandbox/docs>. The child OpenAPI schema is at
@@ -208,8 +209,16 @@ unset AUTH_TOKEN
 authentication and arguments, but returns **501 Not Implemented**. Its injected
 adapter sends no external HTTP request; it does not pretend a recommendation
 succeeded. Incoming Salesforce events write only local PostgreSQL; they do not
-send outbound Salesforce requests. New future external gateways must also receive
-sandbox-safe adapters before being exposed here.
+automatically send outbound Salesforce requests.
+
+**Explicit exception:** admin-only `POST` and `PUT` at
+`/sandbox/integrations/salesforce/customers/{id}` read a full existing customer
+only from `life365_sandbox` and make a **real** call to the same Salesforce UAT
+endpoint used by normal routes. A missing local ID returns 404 without sending
+anything. There is no body, outbox, new table, or persistent outgoing event state.
+Only a remote 401 permits one token renewal and retransmission of the same event.
+See [customer export](integrations/SALESFORCE_CUSTOMER_EXPORT.md) for setup,
+curl examples, overwrite behavior, and remote reference-ID collision risks.
 
 The shared PostgreSQL container uses tmpfs. Stopping it loses **both** databases;
 the next start reloads the bundled sandbox sample and initializes an empty test

@@ -160,6 +160,12 @@ o reload dell'API occorre autenticarsi di nuovo. Usare un solo worker API.
 - Le raccomandazioni prodotto restituiscono HTTP `501`: non viene effettuata
   alcuna chiamata al servizio esterno. Gli eventi ricevuti non generano chiamate
   in uscita verso Salesforce.
+- Eccezione esplicita: i nuovi endpoint `POST` e `PUT`
+  `/sandbox/integrations/salesforce/customers/{id}` leggono un customer locale
+  esistente e lo inviano realmente alla sandbox Salesforce. Non accettano un body
+  e richiedono il ruolo admin. La `PUT` invia tutti i dati condivisi e li
+  sovrascrive sul lato Salesforce. Vedi la
+  [guida di esportazione](docs/integrations/SALESFORCE_CUSTOMER_EXPORT.md).
 - PostgreSQL usa memoria temporanea: fermare il suo container elimina sia la
   sandbox sia il database separato dei test automatici. All'avvio successivo
   vengono ripristinati i dati di esempio, non le modifiche fatte durante i test.

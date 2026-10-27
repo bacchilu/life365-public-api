@@ -32,3 +32,19 @@ class InvalidCustomerDataException(CustomerSynchronizationException):
 
 class CustomerSynchronizationConflictException(CustomerSynchronizationException):
     """Raised when an event conflicts with the stored customer state."""
+
+
+class SalesforceConfigurationException(Exception):
+    """Raised when the outbound Salesforce connection is not configured."""
+
+
+class SalesforceRequestException(Exception):
+    """Safe upstream failure details, without remote bodies or credentials."""
+
+    def __init__(self, message: str, *, remote_status: int | None = None) -> None:
+        super().__init__(message)
+        self.remote_status = remote_status
+
+
+class SalesforceTimeoutException(SalesforceRequestException):
+    """The remote outcome may be unknown; the request is not retried."""

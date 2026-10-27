@@ -10,11 +10,17 @@ from app.api.application import create_api_application
 from app.api.customers.routes import get_customer_service
 from app.api.dependencies import get_auth_service
 from app.api.health.routes import get_health_service
+from app.api.integrations.export_dependencies import get_customer_export_service
 from app.api.integrations.routes import get_customer_synchronization_service
 from app.api.orders.routes import get_order_service
 from app.api.products.composition import get_products_service
-from app.application.exceptions import DBException, ExternalIntegrationDisabledException
+from app.application.exceptions import (
+    DBException,
+    ExternalIntegrationDisabledException,
+    SalesforceConfigurationException,
+)
 from app.application.services.auth_service import AuthService
+from app.application.services.customer_export_service import CustomerExportService
 from app.application.services.customer_service import CustomerService
 from app.application.services.customer_synchronization_service import (
     CustomerSynchronizationService,
@@ -34,7 +40,8 @@ def create_sandbox_application(settings: SandboxSettings | None = None) -> FastA
     sandbox.description = (
         "Isolated local PostgreSQL sandbox using the same endpoint contracts. "
         "Tokens and in-memory sessions are sandbox-only. Product recommendations "
-        "return 501; no external business service is called. Run a single worker."
+        "return 501. Customer exports make real calls to the configured Salesforce "
+        "API, shared with normal endpoints. Run a single worker."
     )
     try:
         services = SandboxServices(
@@ -70,6 +77,12 @@ def create_sandbox_application(settings: SandboxSettings | None = None) -> FastA
             request.client.host if request.client is not None else None
         )
 
+    async def export() -> CustomerExportService:
+        try:
+            return require_services().customer_export()
+        except SalesforceConfigurationException as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from None
+
     sandbox.dependency_overrides.update(
         {
             get_auth_service: auth,
@@ -78,6 +91,7 @@ def create_sandbox_application(settings: SandboxSettings | None = None) -> FastA
             get_products_service: products,
             get_health_service: health,
             get_customer_synchronization_service: synchronize,
+            get_customer_export_service: export,
         }
     )
 

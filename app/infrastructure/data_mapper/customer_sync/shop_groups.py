@@ -7,16 +7,9 @@ from psycopg.rows import TupleRow
 from app.application.dtos.customer_integration.operations import IntegrationShopGroup
 from app.application.exceptions import InvalidCustomerDataException
 
-_SHOP_GROUP_IDS_BY_CODE: dict[str, int] = {
-    "rei-la-rete": 1,
-    "geser-prodigix": 2,
-    "professional-group": 3,
-    "closed-activity": 36,
-}
+from .reference_codes import SHOP_GROUP_IDS_BY_CODE as _SHOP_GROUP_IDS_BY_CODE
 
-_SELECT_SHOP_GROUP_IDS = sql.SQL(
-    "SELECT id FROM public.shop_groups WHERE id = ANY(%s)"
-)
+_SELECT_SHOP_GROUP_IDS = sql.SQL("SELECT id FROM public.shop_groups WHERE id = ANY(%s)")
 
 
 async def resolve_shop_group_ids(

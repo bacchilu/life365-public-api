@@ -40,6 +40,11 @@ Expected response:
 For Salesforce customer event setup, migrations, and request examples, see
 [the synchronization runbook](docs/integrations/SALESFORCE_CUSTOMER_SYNC_RUNBOOK.md).
 
+For the opposite direction, admin-only POST/PUT export the complete existing
+customer synchronously to Salesforce. Normal and `/sandbox` routes both make
+real calls to its configured UAT API; only the source database differs. See
+[the customer export guide](docs/integrations/SALESFORCE_CUSTOMER_EXPORT.md).
+
 Inspect the SQLite token sessions:
 
 ```bash

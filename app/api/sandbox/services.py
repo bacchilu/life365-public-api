@@ -1,6 +1,8 @@
-"""Sandbox composition: local PostgreSQL, independent sessions, no real HTTP."""
+"""Local data and sessions; customer exports use the real Salesforce UAT API."""
 
+from app.api.integrations.export_dependencies import get_salesforce_customer_gateway
 from app.application.services.auth_service import AuthService
+from app.application.services.customer_export_service import CustomerExportService
 from app.application.services.customer_service import CustomerService
 from app.application.services.customer_synchronization_service import (
     CustomerSynchronizationService,
@@ -16,6 +18,9 @@ from app.infrastructure.data_mapper import (
     PostgreSQLCustomersDataMapper,
     PostgreSQLOrdersDataMapper,
     ProductsDataMapper,
+)
+from app.infrastructure.data_mapper.customer_export import (
+    PostgreSQLCustomerExportDataMapper,
 )
 from app.infrastructure.data_mapper.customer_sync.customers import (
     PostgreSQLCustomerDataMapper,
@@ -47,6 +52,12 @@ class SandboxServices:
             ProductsDataMapper(connection), DisabledLife365PortalAPI()
         )
         self.health = HealthService(CheckDataMapper(connection))
+
+    def customer_export(self) -> CustomerExportService:
+        return CustomerExportService(
+            PostgreSQLCustomerExportDataMapper(self._settings.database_connection),
+            get_salesforce_customer_gateway(),
+        )
 
     def customer_synchronization(
         self, client_ip: str | None

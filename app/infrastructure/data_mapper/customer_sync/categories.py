@@ -7,21 +7,9 @@ from psycopg.rows import TupleRow
 from app.application.dtos.customer_integration.commercial import IntegrationCategory
 from app.application.exceptions import InvalidCustomerDataException
 
-_CATEGORY_IDS_BY_CODE: dict[str, int] = {
-    "cartridge-toner": 1,
-    "smart-solutions": 2,
-    "networking": 14,
-    "myphone": 23,
-    "solar-energy": 25,
-    "lighting": 27,
-    "electric-parts": 28,
-    "special-business": 29,
-    "power-tools": 30,
-}
+from .reference_codes import CATEGORY_IDS_BY_CODE as _CATEGORY_IDS_BY_CODE
 
-_SELECT_CATEGORY_IDS = sql.SQL(
-    "SELECT id FROM public.categories WHERE id = ANY(%s)"
-)
+_SELECT_CATEGORY_IDS = sql.SQL("SELECT id FROM public.categories WHERE id = ANY(%s)")
 
 
 async def resolve_category_ids(

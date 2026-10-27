@@ -16,6 +16,10 @@ from app.application.dtos.customer_integration.events import (
     CustomerIntegrationEvent,
     CustomerSynchronizationResult,
 )
+from app.application.dtos.customer_integration.export import (
+    CustomerExportEvent,
+    CustomerExportResult,
+)
 
 
 class CheckGateway(Protocol):
@@ -34,6 +38,18 @@ class CustomersGateway(Protocol):
     async def get_customers(
         self, limit: int = 100, offset: int = 0
     ) -> list[Customer]: ...
+
+
+class CustomerExportReader(Protocol):
+    async def get_customer(
+        self, reference_id: int
+    ) -> IntegrationCustomerData | None: ...
+
+
+class SalesforceCustomerGateway(Protocol):
+    async def send_customer(
+        self, event: CustomerExportEvent
+    ) -> CustomerExportResult: ...
 
 
 class CustomerSynchronizationGateway(Protocol):
