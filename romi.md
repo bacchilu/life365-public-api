@@ -24,18 +24,18 @@ La sandbox espone gli stessi endpoint sotto `/sandbox`, ma usa esclusivamente il
 database PostgreSQL locale `life365_sandbox`. Le chiamate senza questo prefisso
 mantengono la configurazione esistente: non sono automaticamente chiamate di test.
 
-Gli esempi di questa guida utilizzano la sandbox locale:
+Gli esempi di questa guida utilizzano la sandbox esposta sul dominio di produzione:
 
 ```bash
-API_URL='http://127.0.0.1:8000/sandbox'
+API_URL='https://b2b.life365.eu/public-api/sandbox'
 ```
 
-| Operazione | URL locale |
+| Operazione | URL sandbox |
 |---|---|
-| Autenticazione | `http://127.0.0.1:8000/sandbox/auth/login` |
-| Creazione e aggiornamento customer | `http://127.0.0.1:8000/sandbox/integrations/salesforce/events` |
-| Logout | `http://127.0.0.1:8000/sandbox/auth/logout` |
-| Swagger | `http://127.0.0.1:8000/sandbox/docs` |
+| Autenticazione | `https://b2b.life365.eu/public-api/sandbox/auth/login` |
+| Creazione e aggiornamento customer | `https://b2b.life365.eu/public-api/sandbox/integrations/salesforce/events` |
+| Logout | `https://b2b.life365.eu/public-api/sandbox/auth/logout` |
+| Swagger | `https://b2b.life365.eu/public-api/sandbox/docs` |
 
 Per avviare l'ambiente, configurare le variabili `SANDBOX_DATABASE_HOST`,
 `SANDBOX_DATABASE_PORT`, `SANDBOX_DB_PASSWORD`, `SANDBOX_JWT_SECRET_KEY` e
@@ -71,7 +71,7 @@ Gli esempi richiedono `curl` e si eseguono dalla cartella principale del
 repository. Verificare che `API_URL` includa `/sandbox` prima di inviare i test.
 
 ```bash
-API_URL='http://127.0.0.1:8000/sandbox'
+API_URL='https://b2b.life365.eu/public-api/sandbox'
 
 curl --fail-with-body -sS -X POST "$API_URL/auth/login" \
   -H 'Content-Type: application/json' \
@@ -191,8 +191,10 @@ o reload dell'API occorre autenticarsi di nuovo. Usare un solo worker API.
 
 ## Documentazione interattiva
 
-La [Swagger UI della sandbox locale](http://127.0.0.1:8000/sandbox/docs)
-permette di consultare gli stessi schemi ed eseguire chiamate sul database locale.
+La [Swagger UI della sandbox](https://b2b.life365.eu/public-api/sandbox/docs)
+permette di consultare gli stessi schemi ed eseguire chiamate sul database
+`life365_sandbox` locale al server che ospita l'API, non sul PostgreSQL della
+propria workstation.
 Autenticarsi con `salesforce` / `romi` tramite `/sandbox/auth/login`.
 
 La [Swagger UI di produzione](https://b2b.life365.eu/public-api/docs)
