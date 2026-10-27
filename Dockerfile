@@ -1,10 +1,10 @@
-FROM python:3.15.1
+FROM python:3.15.2
 
 LABEL maintainer="Luca Bacchi <bacchilu@gmail.com> (https://github.com/bacchilu)"
 
 WORKDIR /app
 
-ARG SUPERCRONIC_VERSION=v0.2.48
+ARG SUPERCRONIC_VERSION=v0.2.51
 ARG TARGETARCH
 
 ARG USER_ID=1000
