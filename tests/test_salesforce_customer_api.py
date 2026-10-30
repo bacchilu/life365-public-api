@@ -251,7 +251,7 @@ def test_payload_preserves_the_complete_contract_and_extension_keys() -> None:
 @pytest.mark.parametrize("event_type", ["customer.created", "customer.updated"])
 @pytest.mark.parametrize("privacy", [None, False, True])
 @pytest.mark.parametrize("rules", [None, False, True])
-def test_only_null_privacy_and_rules_are_exported_as_false(
+def test_consent_normalization_preserves_explicit_values_and_extensions(
     event_type: CustomerEventType, privacy: bool | None, rules: bool | None
 ) -> None:
     event = _event()
@@ -280,7 +280,7 @@ def test_only_null_privacy_and_rules_are_exported_as_false(
     data = payload["data"]
     assert isinstance(data, dict)
     assert data["communicationPreferences"] == {
-        "newsletter": None,
+        "newsletter": False,
         "privacyRegistered": privacy if privacy is not None else False,
         "rulesRegistered": rules if rules is not None else False,
     }
@@ -292,13 +292,14 @@ def test_only_null_privacy_and_rules_are_exported_as_false(
         "extraData": None,
     }
     assert event.data.communication_preferences is preferences
+    assert preferences.newsletter is None
     assert preferences.privacy_registered is privacy
     assert preferences.rules_registered is rules
 
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("event_type", ["customer.created", "customer.updated"])
-async def test_http_delivery_converts_null_privacy_and_rules_to_false(
+async def test_http_delivery_applies_all_nullable_boolean_defaults(
     event_type: CustomerEventType,
 ) -> None:
     event = _event()
@@ -309,8 +310,16 @@ async def test_http_delivery_converts_null_privacy_and_rules_to_false(
             event.data,
             communication_preferences=replace(
                 event.data.communication_preferences,
+                newsletter=None,
                 privacy_registered=None,
                 rules_registered=None,
+            ),
+            registration=replace(event.data.registration, verified=None),
+            operational_settings=replace(
+                event.data.operational_settings,
+                disable_quantity_delivery=None,
+                prepaid_returns=None,
+                disable_sale_limit=None,
             ),
         ),
     )
@@ -321,17 +330,32 @@ async def test_http_delivery_converts_null_privacy_and_rules_to_false(
         if request.url.path.endswith("/token"):
             return httpx.Response(200, json={"access_token": "test-token"})
         deliveries += 1
-        preferences = json.loads(request.content)["data"]["communicationPreferences"]
-        assert preferences["privacyRegistered"] is False
-        assert preferences["rulesRegistered"] is False
+        data = json.loads(request.content)["data"]
+        assert data["communicationPreferences"] == {
+            "newsletter": False,
+            "privacyRegistered": False,
+            "rulesRegistered": False,
+        }
+        assert data["registration"]["verified"] is False
+        assert data["operationalSettings"] == {
+            "disableBoxDiscount": event.data.operational_settings.disable_box_discount,
+            "disableQuantityDelivery": False,
+            "prepaidReturns": True,
+            "disableSaleLimit": False,
+        }
         return _success(request)
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
         result = await SalesforceCustomerAPI(_SETTINGS, client).send_customer(event)
 
     assert result.success is True and deliveries == 1
+    assert event.data.communication_preferences.newsletter is None
     assert event.data.communication_preferences.privacy_registered is None
     assert event.data.communication_preferences.rules_registered is None
+    assert event.data.registration.verified is None
+    assert event.data.operational_settings.disable_quantity_delivery is None
+    assert event.data.operational_settings.prepaid_returns is None
+    assert event.data.operational_settings.disable_sale_limit is None
 
 
 @pytest.mark.parametrize(

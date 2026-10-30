@@ -191,19 +191,35 @@ operational settings, notes, and extensions. Relevant details:
   come from their reference rows. Reference order is preserved.
 - SQL NULL arrays become empty shared arrays. Null JSON extensions remain null;
   empty objects and unrelated nested keys remain intact.
-- Only for outbound Salesforce payloads, null `privacyRegistered` and
-  `rulesRegistered` values become `false`, because their Salesforce checkbox
-  fields do not accept null. Existing `true` and `false` values are preserved.
-  `normalization.py` applies these two rules to a copy of the customer DTO
-  before `payload.py` serializes it.
-  The database, application DTOs, incoming synchronization, and all other
-  nullable fields retain their existing behavior.
+- Only for outbound Salesforce payloads, nullable booleans use the defaults
+  listed below, because their Salesforce checkbox fields do not accept null.
+  `normalization.py` applies these rules to a copy of the customer DTO before
+  `payload.py` serializes it. Existing `true` and `false` values are preserved,
+  including an explicit `prepaidReturns: false`. The database, original
+  application DTOs, incoming synchronization, and all other nullable fields
+  retain their existing behavior.
 - Legacy additional emails and notes are decoded to their full shared shapes.
   Missing required flags are rejected rather than silently assigning consent.
 - Missing required strings/regions, unsupported reference IDs, malformed JSON,
   and incomplete delivery addresses produce 422 before any remote request.
   Repair the source data rather than inventing labels, IDs, or required values.
 - `registrationIp` and `notes.openCount` are absent from the shared payload.
+
+### Outbound Boolean Defaults
+
+| Payload field | Value sent when the Life365 value is NULL |
+|---|---|
+| `communicationPreferences.newsletter` | `false` |
+| `communicationPreferences.privacyRegistered` | `false` |
+| `communicationPreferences.rulesRegistered` | `false` |
+| `registration.verified` | `false` |
+| `operationalSettings.disableQuantityDelivery` | `false` |
+| `operationalSettings.prepaidReturns` | `true` |
+| `operationalSettings.disableSaleLimit` | `false` |
+
+These rules apply to both outbound create and update events. They do not change
+`taxProfile.viesValidated` or `operationalSettings.disableBoxDiscount`, which
+already require non-null booleans.
 
 The canonical [incoming contract](SALESFORCE_CUSTOMER_EVENTS_V1.md) describes
 the shared data sections. Its create envelope is deliberately different: inbound
@@ -281,7 +297,7 @@ production databases, and runtime customer data were not changed.
 | `app/infrastructure/data_mapper/customer_sync/categories.py`, `sales_channels.py`, `shop_groups.py` | Reuse those catalogs; incoming reference resolution retains its previous behavior. |
 | `app/infrastructure/salesforce/settings.py` | Loads and validates remote URL/credentials/timeout settings without mutating global environment values. |
 | `app/infrastructure/salesforce/auth.py` | Owns module-level token cache, authentication lock, credential scoping, and conditional invalidation. |
-| `app/infrastructure/salesforce/normalization.py` | Applies the two approved null-to-false consent rules to a copy of the customer DTO, without changing other fields. |
+| `app/infrastructure/salesforce/normalization.py` | Applies approved defaults to the seven nullable booleans in a copy of the customer DTO, preserving explicit values and all other fields. |
 | `app/infrastructure/salesforce/payload.py` | Serializes application dataclasses into camelCase JSON, financial strings, UTC timestamps, and complete arrays while retaining extension keys. |
 | `app/infrastructure/salesforce/client.py` | Implements the gateway with real HTTP, one 401 renewal/retransmission, response correlation, and safe errors. |
 | `app/infrastructure/salesforce/__init__.py` | Exposes the settings and concrete adapter for composition without leaking HTTP details into the application. |
