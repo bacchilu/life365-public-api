@@ -53,6 +53,8 @@ async def test_seeded_customer_full_read_and_no_local_writes(database_url: str) 
     assert data.credentials.login == "sandbox-customer-1"
     assert data.credentials.password == "sandbox-customer"
     assert data.company.name == "Sample Business 1"
+    assert data.communication_preferences.privacy_registered is None
+    assert data.communication_preferences.rules_registered is None
     assert data.primary_contact.additional_emails[0].commercial is True
     assert data.billing_address.country_code == "IT"
     assert data.billing_address.region_name
@@ -169,6 +171,9 @@ async def test_authenticated_sandbox_post_put_use_real_adapter_with_mock_http(
             return httpx.Response(200, json={"access_token": "test-token"})
         assert request.method == "POST"
         payload = json.loads(request.content)
+        preferences = payload["data"]["communicationPreferences"]
+        assert preferences["privacyRegistered"] is False
+        assert preferences["rulesRegistered"] is False
         payloads.append(payload)
         return httpx.Response(
             201,

@@ -191,6 +191,11 @@ operational settings, notes, and extensions. Relevant details:
   come from their reference rows. Reference order is preserved.
 - SQL NULL arrays become empty shared arrays. Null JSON extensions remain null;
   empty objects and unrelated nested keys remain intact.
+- Only for outbound Salesforce payloads, null `privacyRegistered` and
+  `rulesRegistered` values become `false`, because their Salesforce checkbox
+  fields do not accept null. Existing `true` and `false` values are preserved.
+  The database, application DTOs, incoming synchronization, and all other
+  nullable fields retain their existing behavior.
 - Legacy additional emails and notes are decoded to their full shared shapes.
   Missing required flags are rejected rather than silently assigning consent.
 - Missing required strings/regions, unsupported reference IDs, malformed JSON,

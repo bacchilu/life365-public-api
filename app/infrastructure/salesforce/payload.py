@@ -1,7 +1,7 @@
 """Serialize the shared application contract, not API request models."""
 
 import math
-from dataclasses import fields, is_dataclass
+from dataclasses import fields, is_dataclass, replace
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from typing import TypeAlias
@@ -65,6 +65,25 @@ def _value(value: object) -> JsonValue:
 
 
 def customer_event_payload(event: CustomerExportEvent) -> dict[str, JsonValue]:
-    payload = _value(event)
+    preferences = event.data.communication_preferences
+    salesforce_preferences = replace(
+        preferences,
+        privacy_registered=(
+            preferences.privacy_registered
+            if preferences.privacy_registered is not None
+            else False
+        ),
+        rules_registered=(
+            preferences.rules_registered
+            if preferences.rules_registered is not None
+            else False
+        ),
+    )
+    payload = _value(
+        replace(
+            event,
+            data=replace(event.data, communication_preferences=salesforce_preferences),
+        )
+    )
     assert isinstance(payload, dict)
     return payload

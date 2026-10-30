@@ -11,6 +11,7 @@ from uuid import UUID
 import httpx
 import pytest
 
+from app.application.dtos.customer_integration.events import CustomerEventType
 from app.application.dtos.customer_integration.export import CustomerExportEvent
 from app.application.exceptions import (
     InvalidCustomerDataException,
@@ -245,6 +246,92 @@ def test_payload_preserves_the_complete_contract_and_extension_keys() -> None:
         "extraData": None,
     }
     assert "initial-customer-password" not in repr(event)
+
+
+@pytest.mark.parametrize("event_type", ["customer.created", "customer.updated"])
+@pytest.mark.parametrize("privacy", [None, False, True])
+@pytest.mark.parametrize("rules", [None, False, True])
+def test_only_null_privacy_and_rules_are_exported_as_false(
+    event_type: CustomerEventType, privacy: bool | None, rules: bool | None
+) -> None:
+    event = _event()
+    preferences = replace(
+        event.data.communication_preferences,
+        newsletter=None,
+        privacy_registered=privacy,
+        rules_registered=rules,
+    )
+    event = replace(
+        event,
+        event_type=event_type,
+        data=replace(
+            event.data,
+            communication_preferences=preferences,
+            company=replace(event.data.company, website=None),
+            extensions=replace(
+                event.data.extensions,
+                parameters={"privacyRegistered": None, "rulesRegistered": None},
+            ),
+        ),
+    )
+
+    payload = customer_event_payload(event)
+
+    data = payload["data"]
+    assert isinstance(data, dict)
+    assert data["communicationPreferences"] == {
+        "newsletter": None,
+        "privacyRegistered": privacy if privacy is not None else False,
+        "rulesRegistered": rules if rules is not None else False,
+    }
+    company = data["company"]
+    assert isinstance(company, dict)
+    assert company["website"] is None
+    assert data["extensions"] == {
+        "parameters": {"privacyRegistered": None, "rulesRegistered": None},
+        "extraData": None,
+    }
+    assert event.data.communication_preferences is preferences
+    assert preferences.privacy_registered is privacy
+    assert preferences.rules_registered is rules
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("event_type", ["customer.created", "customer.updated"])
+async def test_http_delivery_converts_null_privacy_and_rules_to_false(
+    event_type: CustomerEventType,
+) -> None:
+    event = _event()
+    event = replace(
+        event,
+        event_type=event_type,
+        data=replace(
+            event.data,
+            communication_preferences=replace(
+                event.data.communication_preferences,
+                privacy_registered=None,
+                rules_registered=None,
+            ),
+        ),
+    )
+    deliveries = 0
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        nonlocal deliveries
+        if request.url.path.endswith("/token"):
+            return httpx.Response(200, json={"access_token": "test-token"})
+        deliveries += 1
+        preferences = json.loads(request.content)["data"]["communicationPreferences"]
+        assert preferences["privacyRegistered"] is False
+        assert preferences["rulesRegistered"] is False
+        return _success(request)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
+        result = await SalesforceCustomerAPI(_SETTINGS, client).send_customer(event)
+
+    assert result.success is True and deliveries == 1
+    assert event.data.communication_preferences.privacy_registered is None
+    assert event.data.communication_preferences.rules_registered is None
 
 
 @pytest.mark.parametrize(
