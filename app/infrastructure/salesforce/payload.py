@@ -10,6 +10,8 @@ from uuid import UUID
 from app.application.dtos.customer_integration.export import CustomerExportEvent
 from app.application.exceptions import InvalidCustomerDataException
 
+from .normalization import normalize_customer_data
+
 JsonValue: TypeAlias = (
     str | int | float | bool | None | list["JsonValue"] | dict[str, "JsonValue"]
 )
@@ -65,25 +67,6 @@ def _value(value: object) -> JsonValue:
 
 
 def customer_event_payload(event: CustomerExportEvent) -> dict[str, JsonValue]:
-    preferences = event.data.communication_preferences
-    salesforce_preferences = replace(
-        preferences,
-        privacy_registered=(
-            preferences.privacy_registered
-            if preferences.privacy_registered is not None
-            else False
-        ),
-        rules_registered=(
-            preferences.rules_registered
-            if preferences.rules_registered is not None
-            else False
-        ),
-    )
-    payload = _value(
-        replace(
-            event,
-            data=replace(event.data, communication_preferences=salesforce_preferences),
-        )
-    )
+    payload = _value(replace(event, data=normalize_customer_data(event.data)))
     assert isinstance(payload, dict)
     return payload

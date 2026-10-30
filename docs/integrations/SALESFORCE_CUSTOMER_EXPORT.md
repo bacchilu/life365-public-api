@@ -194,6 +194,8 @@ operational settings, notes, and extensions. Relevant details:
 - Only for outbound Salesforce payloads, null `privacyRegistered` and
   `rulesRegistered` values become `false`, because their Salesforce checkbox
   fields do not accept null. Existing `true` and `false` values are preserved.
+  `normalization.py` applies these two rules to a copy of the customer DTO
+  before `payload.py` serializes it.
   The database, application DTOs, incoming synchronization, and all other
   nullable fields retain their existing behavior.
 - Legacy additional emails and notes are decoded to their full shared shapes.
@@ -279,6 +281,7 @@ production databases, and runtime customer data were not changed.
 | `app/infrastructure/data_mapper/customer_sync/categories.py`, `sales_channels.py`, `shop_groups.py` | Reuse those catalogs; incoming reference resolution retains its previous behavior. |
 | `app/infrastructure/salesforce/settings.py` | Loads and validates remote URL/credentials/timeout settings without mutating global environment values. |
 | `app/infrastructure/salesforce/auth.py` | Owns module-level token cache, authentication lock, credential scoping, and conditional invalidation. |
+| `app/infrastructure/salesforce/normalization.py` | Applies the two approved null-to-false consent rules to a copy of the customer DTO, without changing other fields. |
 | `app/infrastructure/salesforce/payload.py` | Serializes application dataclasses into camelCase JSON, financial strings, UTC timestamps, and complete arrays while retaining extension keys. |
 | `app/infrastructure/salesforce/client.py` | Implements the gateway with real HTTP, one 401 renewal/retransmission, response correlation, and safe errors. |
 | `app/infrastructure/salesforce/__init__.py` | Exposes the settings and concrete adapter for composition without leaking HTTP details into the application. |
