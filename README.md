@@ -61,6 +61,103 @@ token_id                              principal_id  principal_type  issued_at   
 6b14e691-3ec1-4649-9174-12e1bc67f79d  2             user            2026-07-29T12:12:06.377408+00:00  2026-08-28T12:12:06.377408+00:00  0
 ```
 
+## Customer Synchronization To Salesforce
+
+These **admin-only** endpoints send a customer that already exists in Life365
+to Salesforce:
+
+| Method and route | Event sent | Successful API response |
+|---|---|---|
+| `POST /integrations/salesforce/customers/{customer_id}` | `customer.created` | HTTP 201 |
+| `PUT /integrations/salesforce/customers/{customer_id}` | `customer.updated` | HTTP 200 |
+
+`customer_id` is the ID in the selected Life365 database, not a Salesforce
+Account ID. Both requests accept **no body**: the API reads the customer and
+its related data, builds the complete payload, and waits for Salesforce's
+response. They do not create or modify the customer in the Life365 database.
+
+PUT sends the full current customer, not a partial patch. Life365 values take
+priority over the shared Salesforce fields, including the documented boolean
+normalization rules. Save changes in Life365 before requesting synchronization.
+
+The API server must have `SALESFORCE_TOKEN_URL`, `SALESFORCE_CLIENT_ID`, and
+`SALESFORCE_CLIENT_SECRET` configured. It manages Salesforce authentication and
+access-token renewal; callers supply only their **Life365 JWT**.
+
+### Authenticate
+
+The following examples use the Life365 sandbox on the production domain and
+require `curl` and `jq`. Its bundled `salesforce` / `romi` credentials identify
+a sandbox admin, not a Salesforce OAuth user or a production Life365 account.
+
+```bash
+API_URL='https://b2b.life365.eu/public-api/sandbox'
+
+AUTH_TOKEN=$(curl --fail-with-body -sS -X POST "$API_URL/auth/login" \
+  -H 'Content-Type: application/json' \
+  --data-raw '{"username":"salesforce","password":"romi","principal_type":"user"}' \
+  | jq -er '.access_token')
+```
+
+**Sandbox exports make real calls to the configured Salesforce API**, currently
+its UAT sandbox. They read only `life365_sandbox` on the API server. Normal and
+sandbox exports share the Salesforce reference namespace, so choose test IDs
+carefully: the same numeric ID can target the same remote Account.
+
+### Create The Salesforce Customer
+
+Replace the placeholder with an existing Life365 customer ID that has not yet
+been exported to Salesforce. This does not create a new customer in Life365.
+
+```bash
+CUSTOMER_ID='<EXISTING_LIFE365_CUSTOMER_ID>'
+
+curl --fail-with-body -sS -X POST \
+  "$API_URL/integrations/salesforce/customers/$CUSTOMER_ID" \
+  -H "Authorization: Bearer $AUTH_TOKEN" | jq
+```
+
+### Update The Salesforce Customer
+
+For example, synchronize the current data of sandbox customer `3` to its
+existing Salesforce representation:
+
+```bash
+CUSTOMER_ID=3
+
+curl --fail-with-body -sS -X PUT \
+  "$API_URL/integrations/salesforce/customers/$CUSTOMER_ID" \
+  -H "Authorization: Bearer $AUTH_TOKEN" | jq
+```
+
+Both operations return the same response structure. For the update above:
+
+```json
+{
+  "success": true,
+  "eventId": "<EVENT_UUID>",
+  "referenceId": 3,
+  "accountId": "<SALESFORCE_ACCOUNT_ID>"
+}
+```
+
+`referenceId` is the Life365 ID; `accountId` identifies the Salesforce Account.
+Each call generates a new `eventId`. Send calls for one customer sequentially.
+There is no durable outgoing retry history; after a timeout, check Salesforce
+before repeating an uncertain operation. Only an upstream HTTP 401 causes one
+automatic token renewal and retransmission of the same event.
+
+For normal production customer data, use
+`API_URL='https://b2b.life365.eu/public-api'` and authenticate again with a
+production admin account. Those routes read the existing `DATABASE_URL`;
+sandbox credentials and tokens cannot be reused. For local sandbox testing,
+use `API_URL='http://127.0.0.1:8000/sandbox'` instead and authenticate there.
+
+See [the customer export guide](docs/integrations/SALESFORCE_CUSTOMER_EXPORT.md)
+for configuration, normalization, and error responses. Interactive documentation
+is available for [production](https://b2b.life365.eu/public-api/docs) and
+[sandbox](https://b2b.life365.eu/public-api/sandbox/docs).
+
 ## Docker
 
 Build the image with a container user matching the current host user:
