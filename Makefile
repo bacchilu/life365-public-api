@@ -61,6 +61,7 @@ clean-all:
 	find . -name "__pycache__" -delete
 	rm -rf .pytest_cache
 	rm -rf .ruff_cache
+	rm -rf .sandbox-db
 	rm -rf .venv
 	rm -rf node_modules
 	rm -rf .codex
