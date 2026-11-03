@@ -37,15 +37,15 @@ async def get_access_token(
             )
         except httpx.TimeoutException:
             raise SalesforceTimeoutException(
-                "Salesforce authentication timed out; no customer event was sent"
+                "Salesforce authentication timed out; no event was sent"
             ) from None
         except httpx.RequestError:
             raise SalesforceRequestException(
-                "Salesforce authentication is unavailable; no customer event was sent"
+                "Salesforce authentication is unavailable; no event was sent"
             ) from None
         if response.status_code != 200:
             raise SalesforceRequestException(
-                f"Salesforce authentication failed (HTTP {response.status_code}); no customer event was sent",
+                f"Salesforce authentication failed (HTTP {response.status_code}); no event was sent",
                 remote_status=response.status_code,
             )
         try:

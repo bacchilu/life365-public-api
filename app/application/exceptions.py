@@ -48,3 +48,15 @@ class SalesforceRequestException(Exception):
 
 class SalesforceTimeoutException(SalesforceRequestException):
     """The remote outcome may be unknown; the request is not retried."""
+
+
+class ProductNotFoundException(Exception):
+    """The product does not exist in the selected Life365 database."""
+
+
+class InvalidProductReferenceException(Exception):
+    """The Life365 product reference is not a positive integer."""
+
+
+class InvalidProductDataException(Exception):
+    """Product data or a reference cannot be represented in the export contract."""

@@ -1,6 +1,9 @@
-"""Local data and sessions; customer exports use the real Salesforce UAT API."""
+"""Local data and sessions; customer/product exports use the real Salesforce API."""
 
 from app.api.integrations.export_dependencies import get_salesforce_customer_gateway
+from app.api.integrations.product_export_dependencies import (
+    get_salesforce_product_gateway,
+)
 from app.application.services.auth_service import AuthService
 from app.application.services.customer_export_service import CustomerExportService
 from app.application.services.customer_service import CustomerService
@@ -9,6 +12,7 @@ from app.application.services.customer_synchronization_service import (
 )
 from app.application.services.health_service import HealthService
 from app.application.services.order_service import OrderService
+from app.application.services.product_export_service import ProductExportService
 from app.application.services.products_service import ProductsService
 from app.infrastructure.auth import PyJWTTokenCodec
 from app.infrastructure.data_mapper import (
@@ -27,6 +31,9 @@ from app.infrastructure.data_mapper.customer_sync.customers import (
 )
 from app.infrastructure.data_mapper.customer_sync.unit_of_work import (
     PostgreSQLCustomerSynchronizationUnitOfWork,
+)
+from app.infrastructure.data_mapper.product_export import (
+    PostgreSQLProductExportDataMapper,
 )
 from app.infrastructure.disabled_portal_api import DisabledLife365PortalAPI
 
@@ -57,6 +64,12 @@ class SandboxServices:
         return CustomerExportService(
             PostgreSQLCustomerExportDataMapper(self._settings.database_connection),
             get_salesforce_customer_gateway(),
+        )
+
+    def product_export(self) -> ProductExportService:
+        return ProductExportService(
+            PostgreSQLProductExportDataMapper(self._settings.database_connection),
+            get_salesforce_product_gateway(),
         )
 
     def customer_synchronization(

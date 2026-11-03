@@ -30,7 +30,9 @@ _TABLES = (
     "order_details",
     "orders",
     "product_stocks",
+    "product_images",
     "products",
+    "brands",
     "customers",
     "users",
     "shop_groups",
@@ -71,6 +73,7 @@ def database_url(monkeypatch: pytest.MonkeyPatch) -> Iterator[str]:
             for path in (
                 "docker/postgres/sandbox/schema.sql",
                 "docker/postgres/sandbox/data.sql",
+                "docker/postgres/sandbox/product-export-support.sql",
                 "migrations/0001_customer_synchronization.sql",
                 "migrations/0002_remove_customer_resource_versions.sql",
             ):

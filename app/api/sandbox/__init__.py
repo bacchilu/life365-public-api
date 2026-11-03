@@ -11,6 +11,7 @@ from app.api.customers.routes import get_customer_service
 from app.api.dependencies import get_auth_service
 from app.api.health.routes import get_health_service
 from app.api.integrations.export_dependencies import get_customer_export_service
+from app.api.integrations.product_export_dependencies import get_product_export_service
 from app.api.integrations.routes import get_customer_synchronization_service
 from app.api.orders.routes import get_order_service
 from app.api.products.composition import get_products_service
@@ -27,6 +28,7 @@ from app.application.services.customer_synchronization_service import (
 )
 from app.application.services.health_service import HealthService
 from app.application.services.order_service import OrderService
+from app.application.services.product_export_service import ProductExportService
 from app.application.services.products_service import ProductsService
 
 from .services import SandboxServices
@@ -40,7 +42,7 @@ def create_sandbox_application(settings: SandboxSettings | None = None) -> FastA
     sandbox.description = (
         "Isolated local PostgreSQL sandbox using the same endpoint contracts. "
         "Tokens and in-memory sessions are sandbox-only. Product recommendations "
-        "return 501. Customer exports make real calls to the configured Salesforce "
+        "return 501. Customer and product exports make real calls to the configured Salesforce "
         "API, shared with normal endpoints. Run a single worker."
     )
     try:
@@ -83,6 +85,12 @@ def create_sandbox_application(settings: SandboxSettings | None = None) -> FastA
         except SalesforceConfigurationException as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from None
 
+    async def export_product() -> ProductExportService:
+        try:
+            return require_services().product_export()
+        except SalesforceConfigurationException as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from None
+
     sandbox.dependency_overrides.update(
         {
             get_auth_service: auth,
@@ -92,6 +100,7 @@ def create_sandbox_application(settings: SandboxSettings | None = None) -> FastA
             get_health_service: health,
             get_customer_synchronization_service: synchronize,
             get_customer_export_service: export,
+            get_product_export_service: export_product,
         }
     )
 

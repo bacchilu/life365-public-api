@@ -20,6 +20,11 @@ from app.application.dtos.customer_integration.export import (
     CustomerExportEvent,
     CustomerExportResult,
 )
+from app.application.dtos.product_integration import (
+    IntegrationProductData,
+    ProductExportEvent,
+    ProductExportResult,
+)
 
 
 class CheckGateway(Protocol):
@@ -50,6 +55,16 @@ class SalesforceCustomerGateway(Protocol):
     async def send_customer(
         self, event: CustomerExportEvent
     ) -> CustomerExportResult: ...
+
+
+class ProductExportReader(Protocol):
+    async def get_product(self, reference_id: int) -> IntegrationProductData | None: ...
+
+    async def product_exists(self, reference_id: int) -> bool: ...
+
+
+class SalesforceProductGateway(Protocol):
+    async def send_product(self, event: ProductExportEvent) -> ProductExportResult: ...
 
 
 class CustomerSynchronizationGateway(Protocol):

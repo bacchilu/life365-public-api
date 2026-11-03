@@ -158,6 +158,55 @@ for configuration, normalization, and error responses. Interactive documentation
 is available for [production](https://b2b.life365.eu/public-api/docs) and
 [sandbox](https://b2b.life365.eu/public-api/sandbox/docs).
 
+## Product Synchronization To Salesforce
+
+Admin-only endpoints send an existing Life365 catalog product to Salesforce:
+
+| Method and route | Event | Success |
+|---|---|---|
+| `POST /integrations/salesforce/products/{product_id}` | `product.created` | HTTP 201 |
+| `PUT /integrations/salesforce/products/{product_id}` | `product.updated` | HTTP 200 |
+| `DELETE /integrations/salesforce/products/{product_id}` | `product.deleted` | HTTP 200 |
+
+No request body is accepted. The API reads `products.id` (not a stock ID),
+resolves its brand/category/image, builds the minimal DTO, and waits for
+Salesforce. PUT sends every shared field. DELETE only deactivates Salesforce's
+record; no Life365 data is changed. PUT can reactivate it when the local
+product has `enabled=true`.
+
+Use the sandbox authentication example above, then:
+
+```bash
+PRODUCT_ID=101
+
+curl --fail-with-body -sS -X POST \
+  "$API_URL/integrations/salesforce/products/$PRODUCT_ID" \
+  -H "Authorization: Bearer $AUTH_TOKEN" | jq
+
+curl --fail-with-body -sS -X PUT \
+  "$API_URL/integrations/salesforce/products/$PRODUCT_ID" \
+  -H "Authorization: Bearer $AUTH_TOKEN" | jq
+
+curl --fail-with-body -sS -X DELETE \
+  "$API_URL/integrations/salesforce/products/$PRODUCT_ID" \
+  -H "Authorization: Bearer $AUTH_TOKEN" | jq
+```
+
+Responses include `success`, `eventId`, `referenceId`, and `recordId` (the
+Salesforce Product2 ID). `/sandbox` reads only its local sample database but
+makes real Salesforce calls. Normal and sandbox product IDs share one remote
+namespace, so the same ID can overwrite the same Salesforce product.
+
+OAuth settings and the in-memory token cache are shared with customer exports.
+`SALESFORCE_PRODUCT_SYNC_URL` is optional; it defaults to the token URL's
+origin plus `/services/apexrest/product/sync/`. There is no outgoing retry
+table; only HTTP 401 triggers one token renewal and identical-event retry.
+
+See [the product export guide](docs/integrations/SALESFORCE_PRODUCT_EXPORT.md)
+for EAN/category rules, configuration, errors, full examples, and the additive
+schema setup needed by an already initialized sandbox. No production database
+migration is required.
+
 ## Docker
 
 Build the image with a container user matching the current host user:

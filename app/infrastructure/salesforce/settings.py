@@ -17,13 +17,23 @@ class SalesforceSettings:
     client_id: str = field(repr=False)
     client_secret: str = field(repr=False)
     timeout_seconds: float = 30.0
+    product_url: str | None = None
+
+    @property
+    def product_sync_url(self) -> str:
+        if self.product_url is not None:
+            return self.product_url
+        token = urlsplit(self.token_url)
+        return f"{token.scheme}://{token.netloc}/services/apexrest/product/sync/"
 
     def __post_init__(self) -> None:
         try:
             token = urlsplit(self.token_url)
             customer = urlsplit(self.customer_url)
+            product = urlsplit(self.product_sync_url)
             token_origin = (token.hostname, token.port or 443)
             customer_origin = (customer.hostname, customer.port or 443)
+            product_origin = (product.hostname, product.port or 443)
         except ValueError:
             raise SalesforceConfigurationException(
                 "Invalid Salesforce URL configuration"
@@ -35,14 +45,14 @@ class SalesforceSettings:
             or url.password
             or url.query
             or url.fragment
-            for url in (token, customer)
+            for url in (token, customer, product)
         ):
             raise SalesforceConfigurationException(
                 "Salesforce URLs must be absolute HTTPS URLs without credentials, query, or fragment"
             )
-        if token_origin != customer_origin:
+        if token_origin != customer_origin or token_origin != product_origin:
             raise SalesforceConfigurationException(
-                "Salesforce token and customer URLs must have the same origin"
+                "Salesforce token and synchronization URLs must have the same origin"
             )
         if not self.client_id.strip() or not self.client_secret.strip():
             raise SalesforceConfigurationException(
@@ -72,6 +82,7 @@ class SalesforceSettings:
                 values.get("SALESFORCE_CLIENT_ID") or "",
                 values.get("SALESFORCE_CLIENT_SECRET") or "",
                 float(values.get("SALESFORCE_TIMEOUT_SECONDS") or "30"),
+                product_url=values.get("SALESFORCE_PRODUCT_SYNC_URL") or None,
             )
         except (ValueError, TypeError):
             raise SalesforceConfigurationException(
