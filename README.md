@@ -261,6 +261,13 @@ creates the shared network when it does not already exist.
 `make run`, `make docker-dev-up`, `make docker-prod-up`, and
 `make docker-test-db-up` start and wait for the same `postgres:18.6` service.
 An already running database container is reused without restarting it.
+Its `unless-stopped` restart policy starts it again when Docker starts after a
+host reboot, provided it was not manually stopped. Docker must itself be enabled
+at boot. A manually stopped database remains stopped until explicitly started.
+Changing Compose does not update an existing container by itself. To apply the
+policy without recreating or stopping that container, use
+`docker update --restart unless-stopped <POSTGRES_CONTAINER>` on the intended
+host. This preserves its currently loaded temporary data.
 
 - `life365_sandbox` starts with a small, sanitized production-derived sample:
   7 customers, 12 orders, 24 order lines, and 23 products plus reference catalogs.
@@ -276,7 +283,8 @@ There is no refresh command or automatic production export. The sample is loaded
 from the versioned files under `docker/postgres/sandbox`, not from production.
 
 Storage is temporary (`tmpfs`, 512 MB maximum by default). **Stopping the
-database container loses both databases.** Starting it again restores the
+database container loses both databases.** A host reboot also loses them; the
+automatic restart does not make tmpfs persistent. Starting it again restores the
 bundled sandbox seed and an empty automated-test database. API down commands
 leave the database running; `make docker-test-db-down` explicitly stops it and
 prints a data-loss warning.
