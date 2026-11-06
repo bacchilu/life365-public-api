@@ -60,3 +60,15 @@ class InvalidProductReferenceException(Exception):
 
 class InvalidProductDataException(Exception):
     """Product data or a reference cannot be represented in the export contract."""
+
+
+class OrderNotFoundException(Exception):
+    """The order does not exist in the selected Life365 database."""
+
+
+class InvalidOrderReferenceException(Exception):
+    """The Life365 order reference is not a positive integer."""
+
+
+class InvalidOrderDataException(Exception):
+    """Order data or references cannot be represented without changing meaning."""

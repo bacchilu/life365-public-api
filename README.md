@@ -207,6 +207,47 @@ for EAN/category rules, configuration, errors, full examples, and the additive
 schema setup needed by an already initialized sandbox. No production database
 migration is required.
 
+## Order Synchronization To Salesforce
+
+Admin-only, body-free routes export an existing `orders.id`:
+
+| Method and route | Event | Success |
+|---|---|---|
+| `POST /integrations/salesforce/orders/{order_id}` | `order.created` | 201 |
+| `PUT /integrations/salesforce/orders/{order_id}` | `order.updated` | 200 |
+| `DELETE /integrations/salesforce/orders/{order_id}` | `order.deleted` | 200 |
+
+Synchronize the order's customer first. POST/PUT send the full snapshot and
+all lines; DELETE marks only the Salesforce record as deleted. No Life365 order
+or outgoing history is written. Both normal and `/sandbox` routes make real
+Salesforce calls; the sandbox source remains local PostgreSQL only.
+
+Use the authentication above, then choose an order from `$API_URL/orders`:
+
+```bash
+ORDER_ID=1001
+
+curl --fail-with-body -sS -X POST \
+  "$API_URL/integrations/salesforce/orders/$ORDER_ID" \
+  -H "Authorization: Bearer $AUTH_TOKEN" | jq
+
+curl --fail-with-body -sS -X PUT \
+  "$API_URL/integrations/salesforce/orders/$ORDER_ID" \
+  -H "Authorization: Bearer $AUTH_TOKEN" | jq
+```
+
+The seeded order `1001` belongs to customer `4`; export that customer before
+the order if it is not already synchronized. Amounts use signed line totals,
+nonnegative unit prices, an `ADMGST` shipping line, recorded gross and derived
+combined tax. Status is the unchanged logistic state. No date/state filter
+is imposed by export-by-ID. Optional `SALESFORCE_ORDER_SYNC_URL` defaults to
+the token origin plus `/services/apexrest/order/sync/`; OAuth/cache and the
+single 401 retry are shared with other exports.
+
+See [the Italian Life365 guide](life365.md#sincronizzazione-degli-ordini) and
+[the technical order guide](docs/integrations/SALESFORCE_ORDER_EXPORT.md) for
+DELETE, errors, limits, totals, sample setup, and file responsibilities.
+
 ## Docker
 
 Build the image with a container user matching the current host user:
@@ -270,7 +311,8 @@ policy without recreating or stopping that container, use
 host. This preserves its currently loaded temporary data.
 
 - `life365_sandbox` starts with a small, sanitized production-derived sample:
-  7 customers, 12 orders, 24 order lines, and 23 products plus reference catalogs.
+  7 customers, 12 orders, 24 order lines, and 24 products (including the local
+  `ADMGST` service product) plus reference catalogs.
 - `life365_public_api_test_customer_sync` is a separate, initially empty database
   used by `make test-postgresql`. Its user cannot connect to the sandbox, and
   the sandbox user cannot connect to the test database.

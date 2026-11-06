@@ -1,6 +1,7 @@
-"""Local data and sessions; customer/product exports use the real Salesforce API."""
+"""Local data and sessions; exports use the real configured Salesforce API."""
 
 from app.api.integrations.export_dependencies import get_salesforce_customer_gateway
+from app.api.integrations.order_export_dependencies import get_salesforce_order_gateway
 from app.api.integrations.product_export_dependencies import (
     get_salesforce_product_gateway,
 )
@@ -11,6 +12,7 @@ from app.application.services.customer_synchronization_service import (
     CustomerSynchronizationService,
 )
 from app.application.services.health_service import HealthService
+from app.application.services.order_export_service import OrderExportService
 from app.application.services.order_service import OrderService
 from app.application.services.product_export_service import ProductExportService
 from app.application.services.products_service import ProductsService
@@ -32,6 +34,7 @@ from app.infrastructure.data_mapper.customer_sync.customers import (
 from app.infrastructure.data_mapper.customer_sync.unit_of_work import (
     PostgreSQLCustomerSynchronizationUnitOfWork,
 )
+from app.infrastructure.data_mapper.order_export import PostgreSQLOrderExportDataMapper
 from app.infrastructure.data_mapper.product_export import (
     PostgreSQLProductExportDataMapper,
 )
@@ -70,6 +73,12 @@ class SandboxServices:
         return ProductExportService(
             PostgreSQLProductExportDataMapper(self._settings.database_connection),
             get_salesforce_product_gateway(),
+        )
+
+    def order_export(self) -> OrderExportService:
+        return OrderExportService(
+            PostgreSQLOrderExportDataMapper(self._settings.database_connection),
+            get_salesforce_order_gateway(),
         )
 
     def customer_synchronization(

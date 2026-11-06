@@ -20,6 +20,11 @@ from app.application.dtos.customer_integration.export import (
     CustomerExportEvent,
     CustomerExportResult,
 )
+from app.application.dtos.order_integration import (
+    IntegrationOrderData,
+    OrderExportEvent,
+    OrderExportResult,
+)
 from app.application.dtos.product_integration import (
     IntegrationProductData,
     ProductExportEvent,
@@ -65,6 +70,16 @@ class ProductExportReader(Protocol):
 
 class SalesforceProductGateway(Protocol):
     async def send_product(self, event: ProductExportEvent) -> ProductExportResult: ...
+
+
+class OrderExportReader(Protocol):
+    async def get_order(self, reference_id: int) -> IntegrationOrderData | None: ...
+
+    async def order_exists(self, reference_id: int) -> bool: ...
+
+
+class SalesforceOrderGateway(Protocol):
+    async def send_order(self, event: OrderExportEvent) -> OrderExportResult: ...
 
 
 class CustomerSynchronizationGateway(Protocol):

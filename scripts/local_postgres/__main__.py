@@ -18,6 +18,7 @@ _TESTS = (
     "tests/test_sandbox_postgresql.py",
     "tests/test_customer_export_postgresql.py",
     "tests/test_product_export_postgresql.py",
+    "tests/test_order_export_postgresql.py",
 )
 
 

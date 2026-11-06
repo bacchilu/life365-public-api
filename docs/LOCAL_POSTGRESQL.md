@@ -172,7 +172,7 @@ the seed.
 | `customers` | 7 |
 | `orders` | 12 |
 | `order_details` | 24 |
-| `products` | 23 |
+| `products` | 24 (23 catalog samples plus local ADMGST service product) |
 | `product_stocks` | 23 |
 | `users` | 3 local application accounts |
 | `agents` | 2 synthetic, non-personal agent records |

@@ -23,5 +23,6 @@ PGPASSWORD="$SANDBOX_DB_PASSWORD" psql -X \
     --file /opt/life365-sandbox/schema.sql \
     --file /opt/life365-sandbox/data.sql \
     --file /opt/life365-sandbox/product-export-support.sql \
+    --file /opt/life365-sandbox/order-export-support.sql \
     --file /opt/life365-migrations/0001_customer_synchronization.sql \
     --file /opt/life365-migrations/0002_remove_customer_resource_versions.sql

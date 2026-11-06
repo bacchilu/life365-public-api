@@ -94,7 +94,7 @@ To reactivate, ensure the local product has `enabled=true`, then call PUT.
 The current full snapshot includes `active=true`. DELETE of a nonexistent
 remote product returns 404; it does not silently report success.
 
-Future order export must resolve
+The [order export](SALESFORCE_ORDER_EXPORT.md) resolves
 `order_details.product_stock_id -> product_stocks.product_id -> products.id`
 and use that final ID as `productReferenceId`.
 

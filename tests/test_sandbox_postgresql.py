@@ -74,6 +74,7 @@ def database_url(monkeypatch: pytest.MonkeyPatch) -> Iterator[str]:
                 "docker/postgres/sandbox/schema.sql",
                 "docker/postgres/sandbox/data.sql",
                 "docker/postgres/sandbox/product-export-support.sql",
+                "docker/postgres/sandbox/order-export-support.sql",
                 "migrations/0001_customer_synchronization.sql",
                 "migrations/0002_remove_customer_resource_versions.sql",
             ):

@@ -17,6 +17,8 @@ production connections, or production service singletons.
 | `/products` and `/products/{id}` | `/sandbox/products` and `/sandbox/products/{id}` |
 | `/integrations/salesforce/events` | `/sandbox/integrations/salesforce/events` |
 | `POST/PUT /integrations/salesforce/customers/{id}` | `POST/PUT /sandbox/integrations/salesforce/customers/{id}` |
+| `POST/PUT/DELETE /integrations/salesforce/products/{id}` | `POST/PUT/DELETE /sandbox/integrations/salesforce/products/{id}` |
+| `POST/PUT/DELETE /integrations/salesforce/orders/{id}` | `POST/PUT/DELETE /sandbox/integrations/salesforce/orders/{id}` |
 | `/health` | `/sandbox/health` |
 
 Swagger: <http://127.0.0.1:8000/sandbox/docs>. The child OpenAPI schema is at
@@ -219,6 +221,16 @@ anything. There is no body, outbox, new table, or persistent outgoing event stat
 Only a remote 401 permits one token renewal and retransmission of the same event.
 See [customer export](integrations/SALESFORCE_CUSTOMER_EXPORT.md) for setup,
 curl examples, overwrite behavior, and remote reference-ID collision risks.
+
+The same real-outbound exception applies to admin-only POST/PUT/DELETE at
+`/sandbox/integrations/salesforce/products/{id}` and
+`/sandbox/integrations/salesforce/orders/{id}`. Orders read only local snapshots,
+use local product references (including ADMGST for shipping), and require a
+customer already synchronized in Salesforce. No production lookup is allowed
+for a missing local order or shipping product. DELETE only marks the remote
+order deleted and does not remove any local rows. See the
+[order export guide](integrations/SALESFORCE_ORDER_EXPORT.md) and
+[Italian operational examples](../life365.md#sincronizzazione-degli-ordini).
 
 The shared PostgreSQL container uses tmpfs. Stopping it loses **both** databases;
 the next start reloads the bundled sandbox sample and initializes an empty test
