@@ -15,8 +15,9 @@ to the same configured Salesforce UAT API. Numeric order references share one
 remote namespace: sandbox exports can overwrite a matching remote order.
 
 All remote deliveries are POST to /services/apexrest/order/sync/, per section 7
-of ROMI's Integrazione-Salesforce-LIFE365.docx. POST/PUT send the complete minimal
-snapshot, including all lines. Supplied lines replace the remote list. ROMI
+of ROMI's [Integrazione-Salesforce-LIFE365.docx](Integrazione-Salesforce-LIFE365.docx).
+POST/PUT send the complete minimal snapshot, including all lines. Supplied
+lines replace the remote list. ROMI
 documents create/update as upserts. DELETE sends no data, marks
 Life365_Status__c=deleted and retains history. No local data is modified,
 including on DELETE or remote failure.
