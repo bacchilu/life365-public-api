@@ -141,10 +141,10 @@ def test_salesforce_event_rejects_customer_deletion() -> None:
 
 
 @pytest.mark.anyio
-async def test_admin_can_create_and_update_a_customer(
+async def test_integration_user_can_create_and_update_a_customer(
     store: InMemoryCustomerSynchronizationStore,
 ) -> None:
-    auth_service = _authenticate_as(Role.ADMIN)
+    auth_service = _authenticate_as(Role.INTEGRATION)
     created_payload = _create_payload()
     request = _EVENT_ADAPTER.validate_python(created_payload)
 
@@ -194,7 +194,7 @@ async def test_missing_or_invalid_token_cannot_create_a_customer(
     authorization: str | None,
     store: InMemoryCustomerSynchronizationStore,
 ) -> None:
-    auth_service = _authenticate_as(Role.ADMIN)
+    auth_service = _authenticate_as(Role.INTEGRATION)
     payload = _create_payload()
     headers = {"Authorization": authorization} if authorization else {}
 
@@ -217,8 +217,8 @@ async def test_missing_or_invalid_token_cannot_create_a_customer(
 
 
 @pytest.mark.anyio
-@pytest.mark.parametrize("role", [Role.BUYER, Role.CUSTOMER])
-async def test_non_admin_cannot_create_a_customer(
+@pytest.mark.parametrize("role", [Role.ADMIN, Role.BUYER, Role.CUSTOMER])
+async def test_non_integration_user_cannot_create_a_customer(
     role: Role,
     store: InMemoryCustomerSynchronizationStore,
 ) -> None:
@@ -229,7 +229,7 @@ async def test_non_admin_cannot_create_a_customer(
         response = await client.post(_URL, json=payload, headers=_HEADERS)
 
     assert response.status_code == 403
-    assert response.json() == {"detail": "Forbidden"}
+    assert response.json() == {"detail": "Integration role required"}
     assert auth_service.validated_tokens == ["valid-token"]
     async with InMemoryCustomerSynchronizationUnitOfWork(store) as work:
         assert await work.customers.get_customer(1) is None
@@ -242,15 +242,17 @@ async def test_non_admin_cannot_create_a_customer(
 
 
 @pytest.mark.anyio
-async def test_non_admin_cannot_update_an_existing_customer(
+@pytest.mark.parametrize("role", [Role.ADMIN, Role.BUYER, Role.CUSTOMER])
+async def test_non_integration_user_cannot_update_an_existing_customer(
+    role: Role,
     store: InMemoryCustomerSynchronizationStore,
 ) -> None:
-    _authenticate_as(Role.ADMIN)
+    _authenticate_as(Role.INTEGRATION)
     update_payload = _update_payload(1)
 
     async with _client() as client:
         created = await client.post(_URL, json=_create_payload(), headers=_HEADERS)
-        _authenticate_as(Role.BUYER)
+        _authenticate_as(role)
         denied = await client.post(_URL, json=update_payload, headers=_HEADERS)
 
     assert created.status_code == 200
@@ -270,10 +272,10 @@ async def test_non_admin_cannot_update_an_existing_customer(
 
 
 @pytest.mark.anyio
-async def test_admin_gets_not_found_for_an_unknown_customer(
+async def test_integration_user_gets_not_found_for_an_unknown_customer(
     store: InMemoryCustomerSynchronizationStore,
 ) -> None:
-    _authenticate_as(Role.ADMIN)
+    _authenticate_as(Role.INTEGRATION)
     payload = _update_payload(42)
 
     async with _client() as client:
@@ -291,10 +293,10 @@ async def test_admin_gets_not_found_for_an_unknown_customer(
 
 
 @pytest.mark.anyio
-async def test_admin_gets_conflict_for_reused_event_id(
+async def test_integration_user_gets_conflict_for_reused_event_id(
     store: InMemoryCustomerSynchronizationStore,
 ) -> None:
-    _authenticate_as(Role.ADMIN)
+    _authenticate_as(Role.INTEGRATION)
     original = _create_payload()
     changed = _create_payload()
     changed["data"]["company"]["name"] = "Other name"
@@ -316,7 +318,7 @@ async def test_admin_gets_conflict_for_reused_event_id(
 async def test_invalid_create_payload_returns_validation_error(
     store: InMemoryCustomerSynchronizationStore,
 ) -> None:
-    _authenticate_as(Role.ADMIN)
+    _authenticate_as(Role.INTEGRATION)
     payload = _create_payload()
     del payload["data"]["company"]["name"]
 
@@ -332,7 +334,7 @@ async def test_invalid_create_payload_returns_validation_error(
 async def test_persistence_error_returns_service_unavailable(
     store: InMemoryCustomerSynchronizationStore,
 ) -> None:
-    _authenticate_as(Role.ADMIN)
+    _authenticate_as(Role.INTEGRATION)
 
     class FailingService:
         async def synchronize_customer(self, _event: object) -> None:

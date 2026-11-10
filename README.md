@@ -40,7 +40,7 @@ Expected response:
 For Salesforce customer event setup, migrations, and request examples, see
 [the synchronization runbook](docs/integrations/SALESFORCE_CUSTOMER_SYNC_RUNBOOK.md).
 
-For the opposite direction, admin-only POST/PUT export the complete existing
+For the opposite direction, integration-only POST/PUT export the complete existing
 customer synchronously to Salesforce. Normal and `/sandbox` routes both make
 real calls to its configured UAT API; only the source database differs. See
 [the customer export guide](docs/integrations/SALESFORCE_CUSTOMER_EXPORT.md).
@@ -61,9 +61,37 @@ token_id                              principal_id  principal_type  issued_at   
 6b14e691-3ec1-4649-9174-12e1bc67f79d  2             user            2026-07-29T12:12:06.377408+00:00  2026-08-28T12:12:06.377408+00:00  0
 ```
 
+## Authentication Roles
+
+Internal users authenticate through `/auth/login` with `principal_type: "user"`.
+Supported internal roles are `admin`, `buyer`, and `integration`; customer
+accounts authenticate with `principal_type: "customer"` and receive the
+`customer` role. The server reads the role from the database, not the login
+request. An internal user with `users.role = 'INTEGRATION'` receives
+`"role": "integration"` in the login response and JWT. Existing JWT validation,
+session handling, and logout also support this role.
+
+The `integration` role authorizes **all `/integrations` routes**, including
+incoming customer events and outgoing customer, product, and order operations.
+Only this role is accepted: `admin`, `buyer`, and `customer` receive `403`.
+It has no product permissions or product access outside these routes.
+`GET /customers` remains admin-only. Endpoints that require
+authentication alone retain their existing behavior; for example, `/orders`
+does not currently require a specific role.
+
+The versioned `users.role` column is text (`varchar(45)`), so this role does
+not require a schema migration. The bundled sandbox account `salesforce` /
+`romi` now has the `integration` role; other seeded accounts are unchanged.
+For an existing sandbox, apply the guarded role upgrade described in
+[the sandbox guide](docs/SANDBOX_API.md#upgrade-an-existing-sandbox-account)
+without restarting PostgreSQL or loading the seed again. Normal production
+accounts are not changed automatically. Existing tokens are not revoked;
+log in again to obtain the account's current role. An old admin token cannot
+authorize integration operations.
+
 ## Customer Synchronization To Salesforce
 
-These **admin-only** endpoints send a customer that already exists in Life365
+These **integration-only** endpoints send a customer that already exists in Life365
 to Salesforce:
 
 | Method and route | Event sent | Successful API response |
@@ -88,7 +116,7 @@ access-token renewal; callers supply only their **Life365 JWT**.
 
 The following examples use the Life365 sandbox on the production domain and
 require `curl` and `jq`. Its bundled `salesforce` / `romi` credentials identify
-a sandbox admin, not a Salesforce OAuth user or a production Life365 account.
+a sandbox integration account, not a Salesforce OAuth user or a production Life365 account.
 
 ```bash
 API_URL='https://b2b.life365.eu/public-api/sandbox'
@@ -149,7 +177,7 @@ automatic token renewal and retransmission of the same event.
 
 For normal production customer data, use
 `API_URL='https://b2b.life365.eu/public-api'` and authenticate again with a
-production admin account. Those routes read the existing `DATABASE_URL`;
+production account with the `integration` role. Those routes read the existing `DATABASE_URL`;
 sandbox credentials and tokens cannot be reused. For local sandbox testing,
 use `API_URL='http://127.0.0.1:8000/sandbox'` instead and authenticate there.
 
@@ -160,7 +188,7 @@ is available for [production](https://b2b.life365.eu/public-api/docs) and
 
 ## Product Synchronization To Salesforce
 
-Admin-only endpoints send an existing Life365 catalog product to Salesforce:
+Integration-only endpoints send an existing Life365 catalog product to Salesforce:
 
 | Method and route | Event | Success |
 |---|---|---|
@@ -209,7 +237,7 @@ migration is required.
 
 ## Order Synchronization To Salesforce
 
-Admin-only, body-free routes export an existing `orders.id`:
+Integration-only, body-free routes export an existing `orders.id`:
 
 | Method and route | Event | Success |
 |---|---|---|

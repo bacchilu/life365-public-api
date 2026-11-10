@@ -42,7 +42,7 @@ _METHODS = ("POST", "PUT", "DELETE")
 
 
 class Auth:
-    role: Role = Role.ADMIN
+    role: Role = Role.INTEGRATION
 
     def __init__(self, token: str) -> None:
         self.token = token
@@ -144,8 +144,8 @@ async def test_create_update_delete_read_only_the_selected_database(
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("prefix", ["", "/sandbox"])
-@pytest.mark.parametrize("role", [Role.BUYER, Role.CUSTOMER])
-async def test_non_admin_cannot_read_or_send(
+@pytest.mark.parametrize("role", [Role.ADMIN, Role.BUYER, Role.CUSTOMER])
+async def test_non_integration_user_cannot_read_or_send(
     setup: Setup, prefix: str, role: Role
 ) -> None:
     root, normal_auth, sandbox_auth, normal, isolated, gateway = setup
@@ -249,6 +249,11 @@ async def test_openapi_documents_all_methods_without_body_and_proxy_paths(
             ]
             assert set(operations) == {"post", "put", "delete"}
             for operation in operations.values():
+                assert "Integration role" in operation["description"]
+                assert (
+                    "Integration role required"
+                    in operation["responses"]["403"]["description"]
+                )
                 assert "requestBody" not in operation
                 assert "same real Salesforce API" in operation["description"]
                 assert {"401", "403", "404", "409", "422", "502", "503", "504"} <= set(

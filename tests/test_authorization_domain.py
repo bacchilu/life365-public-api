@@ -35,7 +35,12 @@ def test_permission_values_match_product_actions() -> None:
 
 
 def test_role_permissions_are_declared_for_supported_roles() -> None:
-    assert set(ROLE_PERMISSIONS) == {Role.ADMIN, Role.BUYER, Role.CUSTOMER}
+    assert set(ROLE_PERMISSIONS) == {
+        Role.ADMIN,
+        Role.BUYER,
+        Role.CUSTOMER,
+        Role.INTEGRATION,
+    }
 
 
 @pytest.mark.parametrize(
@@ -183,6 +188,10 @@ def test_customer_permission_resolution_returns_list_and_read_only() -> None:
     )
 
 
+def test_integration_permission_resolution_returns_no_permissions() -> None:
+    assert resolve_permissions(Role.INTEGRATION) == frozenset()
+
+
 @pytest.mark.parametrize("role", ["admin", object(), None])
 def test_unsupported_role_permission_resolution_returns_no_permissions(
     role: object,
@@ -232,6 +241,16 @@ def test_customer_product_access_policy_uses_read_only_product_access() -> None:
     assert isinstance(policy.create, NoProductCreateScope)
     assert isinstance(policy.list, AllProductsScope)
     assert isinstance(policy.read, AllProductsScope)
+    assert isinstance(policy.update, NoProductsScope)
+    assert isinstance(policy.delete, NoProductsScope)
+
+
+def test_integration_product_access_policy_returns_no_access() -> None:
+    policy = resolve_product_access_policy(Role.INTEGRATION, user_id=4)
+
+    assert isinstance(policy.create, NoProductCreateScope)
+    assert isinstance(policy.list, NoProductsScope)
+    assert isinstance(policy.read, NoProductsScope)
     assert isinstance(policy.update, NoProductsScope)
     assert isinstance(policy.delete, NoProductsScope)
 

@@ -13,7 +13,7 @@ from app.infrastructure.data_mapper.product_export import (
 )
 from app.infrastructure.salesforce import SalesforceProductAPI, SalesforceSettings
 
-from .export_dependencies import get_export_admin
+from .dependencies import get_integration_user
 
 _salesforce_product_gateway: SalesforceProductAPI | None = None
 
@@ -26,7 +26,7 @@ def get_salesforce_product_gateway() -> SalesforceProductAPI:
 
 
 async def get_product_export_service(
-    _admin: Annotated[AuthenticatedUser, Depends(get_export_admin)],
+    _integration_user: Annotated[AuthenticatedUser, Depends(get_integration_user)],
 ) -> ProductExportService:
     try:
         gateway = get_salesforce_product_gateway()

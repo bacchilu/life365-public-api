@@ -269,6 +269,7 @@ def _assert_product_response_shape(data: dict[str, object]) -> None:
     [
         ("admin", "user", Role.ADMIN),
         ("buyer", "user", Role.BUYER),
+        ("integration-user", "user", Role.INTEGRATION),
         ("customer-login", "customer", Role.CUSTOMER),
     ],
 )
@@ -684,7 +685,15 @@ async def test_app_registers_auth_health_and_product_routes() -> None:
         response = await client.get("/openapi.json")
 
     assert response.status_code == 200
-    paths = response.json()["paths"]
+    schema = response.json()
+    assert set(schema["components"]["schemas"]["Role"]["enum"]) == {
+        "admin",
+        "buyer",
+        "customer",
+        "integration",
+    }
+    paths = schema["paths"]
+    assert "integration" in paths["/auth/login"]["post"]["description"]
     assert "/auth/login" in paths
     assert "/auth/logout" in paths
     assert "/health" in paths

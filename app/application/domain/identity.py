@@ -10,6 +10,7 @@ class Role(StrEnum):
     ADMIN = "admin"
     BUYER = "buyer"
     CUSTOMER = "customer"
+    INTEGRATION = "integration"
 
     @classmethod
     def from_internal_role(cls, source_role: str) -> "Role":
@@ -20,6 +21,9 @@ class Role(StrEnum):
 
         if normalized_role == "BUYER":
             return cls.BUYER
+
+        if normalized_role == "INTEGRATION":
+            return cls.INTEGRATION
 
         raise AuthenticationException(_INVALID_CREDENTIALS_MESSAGE)
 

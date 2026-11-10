@@ -88,25 +88,37 @@ Only locally initialized sample accounts authenticate in this environment:
 |---|---|---|---|
 | `sandbox-admin` | `sandbox-admin` | `user` | admin |
 | `sandbox-buyer` | `sandbox-buyer` | `user` | buyer |
-| `salesforce` | `romi` | `user` | admin |
+| `salesforce` | `romi` | `user` | integration |
 | `sandbox-customer-1` through `sandbox-customer-7` | `sandbox-customer` | `customer` | customer |
 
 These are deliberately public local-only sample passwords, not production
 credentials. Do not expose the sample environment to untrusted users.
-Customer listing and synchronization remain admin-only. Other role and product
-scope rules are unchanged.
+Customer listing remains admin-only. All `/integrations` routes instead require
+the `integration` role; even admin accounts receive `403` there. Other role and
+product scope rules are unchanged.
+
+Internal accounts with `users.role = 'INTEGRATION'` can also authenticate with
+`principal_type: "user"` and receive JWTs with `role: "integration"`. This role
+has no product permissions outside the integration routes. The seed assigns it
+to `salesforce` / `romi`, while `sandbox-admin` retains its administrative role.
+Use separate accounts when both customer listing and synchronization are needed.
 
 From the repository root (requires `curl`, `jq`, and Python 3):
 
 ```bash
 BASE_URL=http://127.0.0.1:8000/sandbox
-AUTH_TOKEN=$(curl --fail-with-body -sS "$BASE_URL/auth/login" \
+ADMIN_AUTH_TOKEN=$(curl --fail-with-body -sS "$BASE_URL/auth/login" \
   -H 'Content-Type: application/json' \
   --data-raw '{"username":"sandbox-admin","password":"sandbox-admin","principal_type":"user"}' \
   | jq -er '.access_token')
 
 curl --fail-with-body -sS "$BASE_URL/customers?limit=10&offset=0" \
-  -H "Authorization: Bearer $AUTH_TOKEN" | jq
+  -H "Authorization: Bearer $ADMIN_AUTH_TOKEN" | jq
+
+AUTH_TOKEN=$(curl --fail-with-body -sS "$BASE_URL/auth/login" \
+  -H 'Content-Type: application/json' \
+  --data-raw '{"username":"salesforce","password":"romi","principal_type":"user"}' \
+  | jq -er '.access_token')
 ```
 
 For a deployed reverse-proxy prefix, set `BASE_URL` to that prefix followed by
@@ -124,6 +136,39 @@ Logout revokes only the current sandbox session:
 curl --fail-with-body -sS -X POST "$BASE_URL/auth/logout" \
   -H "Authorization: Bearer $AUTH_TOKEN"
 ```
+
+## Upgrade An Existing Sandbox Account
+
+Deploy the code requiring the `integration` role before changing the account.
+Fresh databases already load `salesforce` / `romi` with that role. For an
+existing sandbox, do not restart PostgreSQL or run the seed again: both would
+risk losing temporary data. Run this targeted, repeatable upgrade instead:
+
+```bash
+docker compose --profile test exec -T local-postgres sh -c \
+  'PGPASSWORD="$SANDBOX_DB_PASSWORD" psql -X -U sandbox_user \
+  -d life365_sandbox -v ON_ERROR_STOP=1 \
+  --file /opt/life365-sandbox/integration-role.sql'
+```
+
+When managed by `life365-portal-stack`, use its existing Compose project and
+override files to address the already running `local-postgres` service. Do not
+start another project or recreate the database container. This also applies
+to the sandbox hosted on the production server: its database is still
+`life365_sandbox`, not the production `DATABASE_URL`.
+
+The script refuses databases other than `life365_sandbox` and the dedicated
+automated-test database. In one transaction it requires exactly one enabled
+`salesforce` account with role `ADMIN` or `INTEGRATION`, then changes only its
+role. Passwords, IDs, other users, customer data, and event history are retained.
+Unexpected accounts cause an error instead of an implicit repair.
+
+No existing tokens are revoked. A new login is needed to obtain the current
+role; old admin tokens remain admin tokens and receive `403` on integration
+routes after deployment. Normal production users are never changed by this
+script. Provision their `INTEGRATION` role separately when deploying normal
+integration access. Verify the new login and a guarded request without
+triggering a real Salesforce business operation.
 
 ## Create A Customer
 
@@ -213,7 +258,7 @@ adapter sends no external HTTP request; it does not pretend a recommendation
 succeeded. Incoming Salesforce events write only local PostgreSQL; they do not
 automatically send outbound Salesforce requests.
 
-**Explicit exception:** admin-only `POST` and `PUT` at
+**Explicit exception:** integration-only `POST` and `PUT` at
 `/sandbox/integrations/salesforce/customers/{id}` read a full existing customer
 only from `life365_sandbox` and make a **real** call to the same Salesforce UAT
 endpoint used by normal routes. A missing local ID returns 404 without sending
@@ -222,7 +267,7 @@ Only a remote 401 permits one token renewal and retransmission of the same event
 See [customer export](integrations/SALESFORCE_CUSTOMER_EXPORT.md) for setup,
 curl examples, overwrite behavior, and remote reference-ID collision risks.
 
-The same real-outbound exception applies to admin-only POST/PUT/DELETE at
+The same real-outbound exception applies to integration-only POST/PUT/DELETE at
 `/sandbox/integrations/salesforce/products/{id}` and
 `/sandbox/integrations/salesforce/orders/{id}`. Orders read only local snapshots,
 use local product references (including ADMGST for shipping), and require a
@@ -260,7 +305,7 @@ requires an empty test database before loading the bundled sandbox schema/seed,
 then removes only its test tables. **Never** point destructive fixtures at the
 seeded sandbox or production. Unit tests use fake credentials and no real business
 HTTP calls. Coverage includes configuration, proxy-aware Swagger, JWT/session
-isolation, admin authorization, explicit database selection, seeded reads, full
+isolation, separate admin/integration authorization, explicit database selection, seeded reads, full
 create, partial update, replay/restart, conflicts, rollback, concurrent duplicate
 delivery, JSON merges, and blocked external calls.
 

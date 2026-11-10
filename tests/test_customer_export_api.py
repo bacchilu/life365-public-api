@@ -42,7 +42,7 @@ _HEADERS = {"Authorization": "Bearer test-token"}
 
 
 class Auth:
-    role: Role = Role.ADMIN
+    role: Role = Role.INTEGRATION
 
     async def validate_token(self, token: str | None) -> AuthenticatedUser:
         if token != "test-token":
@@ -126,8 +126,8 @@ async def test_post_and_put_send_full_current_data(
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("prefix", ["", "/sandbox"])
-@pytest.mark.parametrize("role", [Role.BUYER, Role.CUSTOMER])
-async def test_non_admin_cannot_read_or_export(
+@pytest.mark.parametrize("role", [Role.ADMIN, Role.BUYER, Role.CUSTOMER])
+async def test_non_integration_user_cannot_read_or_export(
     setup: tuple[FastAPI, Auth, Reader, Reader, Gateway], prefix: str, role: Role
 ) -> None:
     root, auth, regular, isolated, gateway = setup
@@ -217,6 +217,11 @@ async def test_openapi_describes_no_body_and_real_sandbox_exports(
             ]
             assert set(operations) == {"post", "put"}
             for operation in operations.values():
+                assert "integration role" in operation["description"]
+                assert (
+                    "Integration role required"
+                    in operation["responses"]["403"]["description"]
+                )
                 assert "requestBody" not in operation
                 assert "same real Salesforce API" in operation["description"]
                 assert {"401", "403", "404", "409", "422", "502", "503", "504"} <= set(

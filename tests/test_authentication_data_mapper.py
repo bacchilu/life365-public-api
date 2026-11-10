@@ -19,6 +19,8 @@ from app.infrastructure.data_mapper import (
 )
 from app.infrastructure.data_mapper.auth import (
     CredentialsDataMapper as AuthCredentialsDataMapper,
+)
+from app.infrastructure.data_mapper.auth import (
     SQLiteTokenSessionDataMapper as AuthSQLiteTokenSessionDataMapper,
 )
 from app.infrastructure.data_mapper.auth import verify_legacy_password
@@ -57,10 +59,7 @@ def test_data_mapper_root_exports_authentication_data_mappers() -> None:
         data_mapper_root.InMemoryTokenSessionDataMapper
         is InMemoryTokenSessionDataMapper
     )
-    assert (
-        data_mapper_root.SQLiteTokenSessionDataMapper
-        is SQLiteTokenSessionDataMapper
-    )
+    assert data_mapper_root.SQLiteTokenSessionDataMapper is SQLiteTokenSessionDataMapper
     assert SQLiteTokenSessionDataMapper is AuthSQLiteTokenSessionDataMapper
 
 
@@ -159,6 +158,32 @@ async def test_credentials_data_mapper_authenticates_enabled_buyer(
 
 
 @pytest.mark.anyio
+async def test_credentials_data_mapper_authenticates_enabled_integration_user(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cursor = FakeCursor(
+        [(4, "integration-user", "stored-credential", "INTEGRATION", True)]
+    )
+    monkeypatch.setattr(
+        credentials_mapper_module,
+        "get_cursor_context",
+        _context_for(cursor),
+    )
+    mapper = CredentialsDataMapper("postgresql://unused")
+
+    identity = await mapper.authenticate_internal_user(
+        username="integration-user",
+        password="stored-credential",
+    )
+
+    assert identity.id == 4
+    assert identity.username == "integration-user"
+    assert identity.role is Role.INTEGRATION
+    assert identity.principal_type is PrincipalType.USER
+    assert cursor.execute_params == [("integration-user",)]
+
+
+@pytest.mark.anyio
 async def test_credentials_data_mapper_authenticates_customer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -193,6 +218,14 @@ async def test_credentials_data_mapper_authenticates_customer(
         ),
         (
             [(1, "internal-user", "stored-credential", "ADMIN", False)],
+            "stored-credential",
+        ),
+        (
+            [(4, "integration-user", "stored-credential", "INTEGRATION", True)],
+            "wrong-credential",
+        ),
+        (
+            [(4, "integration-user", "stored-credential", "INTEGRATION", False)],
             "stored-credential",
         ),
         (

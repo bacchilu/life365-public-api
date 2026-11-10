@@ -19,7 +19,8 @@ from app.application.exceptions import (
 )
 from app.application.services.customer_export_service import CustomerExportService
 
-from .export_dependencies import get_customer_export_service, get_export_admin
+from .dependencies import get_integration_user
+from .export_dependencies import get_customer_export_service
 
 router = APIRouter(tags=["integrations"])
 
@@ -33,7 +34,7 @@ class CustomerExportResponse(BaseModel):
 
 _RESPONSES: dict[int | str, dict[str, Any]] = {
     401: {"description": "Missing or invalid Life365 bearer token"},
-    403: {"description": "Admin role required"},
+    403: {"description": "Integration role required; admin is not sufficient"},
     404: {"description": "Life365 customer does not exist"},
     409: {"description": "Salesforce reported a conflict"},
     422: {
@@ -46,7 +47,8 @@ _RESPONSES: dict[int | str, dict[str, Any]] = {
 _DESCRIPTION = (
     "Read the full existing customer from this environment's PostgreSQL database "
     "and send a complete event to Salesforce. No request body is accepted. "
-    "Only admins can export customers. Both normal and /sandbox endpoints call "
+    "Only users with the integration role can export customers; admins are not authorized. "
+    "Both normal and /sandbox endpoints call "
     "the same real Salesforce API, currently its UAT sandbox. "
     "No customer or event state is written locally. Each request generates a new "
     "eventId. Only a rejected access token (HTTP 401) allows one reauthentication "
@@ -102,7 +104,7 @@ async def _export(
 async def create_salesforce_customer(
     customer_id: Annotated[int, Path(ge=1)],
     request: Request,
-    _admin: Annotated[AuthenticatedUser, Depends(get_export_admin)],
+    _integration_user: Annotated[AuthenticatedUser, Depends(get_integration_user)],
     service: Annotated[CustomerExportService, Depends(get_customer_export_service)],
 ) -> CustomerExportResponse:
     return await _export(customer_id, "customer.created", request, service)
@@ -119,7 +121,7 @@ async def create_salesforce_customer(
 async def update_salesforce_customer(
     customer_id: Annotated[int, Path(ge=1)],
     request: Request,
-    _admin: Annotated[AuthenticatedUser, Depends(get_export_admin)],
+    _integration_user: Annotated[AuthenticatedUser, Depends(get_integration_user)],
     service: Annotated[CustomerExportService, Depends(get_customer_export_service)],
 ) -> CustomerExportResponse:
     return await _export(customer_id, "customer.updated", request, service)

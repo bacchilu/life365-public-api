@@ -11,7 +11,7 @@ from app.infrastructure.data_mapper.connection import DATABASE_URL
 from app.infrastructure.data_mapper.order_export import PostgreSQLOrderExportDataMapper
 from app.infrastructure.salesforce import SalesforceOrderAPI, SalesforceSettings
 
-from .export_dependencies import get_export_admin
+from .dependencies import get_integration_user
 
 _salesforce_order_gateway: SalesforceOrderAPI | None = None
 
@@ -24,7 +24,7 @@ def get_salesforce_order_gateway() -> SalesforceOrderAPI:
 
 
 async def get_order_export_service(
-    _admin: Annotated[AuthenticatedUser, Depends(get_export_admin)],
+    _integration_user: Annotated[AuthenticatedUser, Depends(get_integration_user)],
 ) -> OrderExportService:
     try:
         gateway = get_salesforce_order_gateway()

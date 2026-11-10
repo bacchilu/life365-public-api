@@ -29,6 +29,7 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
     Role.ADMIN: _ALL_PRODUCT_PERMISSIONS,
     Role.BUYER: _ALL_PRODUCT_PERMISSIONS,
     Role.CUSTOMER: frozenset({Permission.PRODUCTS_LIST, Permission.PRODUCTS_READ}),
+    Role.INTEGRATION: frozenset(),
 }
 
 

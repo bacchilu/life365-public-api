@@ -307,6 +307,7 @@ async def test_auth_service_validates_issued_token() -> None:
         (101, "admin", Role.ADMIN, PrincipalType.USER),
         (202, "buyer", Role.BUYER, PrincipalType.USER),
         (303, "customer-login", Role.CUSTOMER, PrincipalType.CUSTOMER),
+        (404, "integration-user", Role.INTEGRATION, PrincipalType.USER),
     ],
 )
 async def test_auth_service_validates_issued_tokens_with_role_policies(
@@ -328,6 +329,7 @@ async def test_auth_service_validates_issued_tokens_with_role_policies(
     user = await service.validate_token(result.access_token)
 
     assert user == result.user
+    assert _decode_token(result.access_token)["role"] == role.value
 
     if role is Role.ADMIN:
         assert user.permissions == _all_product_permissions()
@@ -337,6 +339,15 @@ async def test_auth_service_validates_issued_tokens_with_role_policies(
     if role is Role.BUYER:
         assert user.permissions == _all_product_permissions()
         _assert_buyer_product_policy(user.product_access, owner_id=principal_id)
+        return
+
+    if role is Role.INTEGRATION:
+        assert user.permissions == frozenset()
+        assert isinstance(user.product_access.create, NoProductCreateScope)
+        assert isinstance(user.product_access.list, NoProductsScope)
+        assert isinstance(user.product_access.read, NoProductsScope)
+        assert isinstance(user.product_access.update, NoProductsScope)
+        assert isinstance(user.product_access.delete, NoProductsScope)
         return
 
     assert role is Role.CUSTOMER
@@ -411,13 +422,14 @@ async def test_auth_service_rejects_unknown_token() -> None:
 
 
 @pytest.mark.anyio
-async def test_auth_service_rejects_revoked_token() -> None:
+@pytest.mark.parametrize("role", [Role.BUYER, Role.INTEGRATION])
+async def test_auth_service_rejects_revoked_token(role: Role) -> None:
     dependencies = FakeAuthDependencies()
     service = _auth_service(dependencies)
     principal = PrincipalIdentity(
         id=123,
-        username="buyer",
-        role=Role.BUYER,
+        username=role.value,
+        role=role,
         principal_type=PrincipalType.USER,
     )
 

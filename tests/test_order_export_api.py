@@ -109,8 +109,8 @@ async def test_all_methods_use_selected_reader(setup: Setup, prefix: str) -> Non
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("prefix", ["", "/sandbox"])
-@pytest.mark.parametrize("role", [Role.BUYER, Role.CUSTOMER])
-async def test_admin_rule_before_any_read_or_send(
+@pytest.mark.parametrize("role", [Role.ADMIN, Role.BUYER, Role.CUSTOMER])
+async def test_integration_rule_before_any_read_or_send(
     setup: Setup, prefix: str, role: Role
 ) -> None:
     root, normal_auth, sandbox_auth, normal, isolated, gateway = setup
@@ -226,6 +226,12 @@ async def test_swagger_paths_schemas_and_reverse_proxy_root(setup: Setup) -> Non
             path = schema["paths"]["/integrations/salesforce/orders/{order_id}"]
             assert set(_METHODS) == {m.upper() for m in path}
             assert all("requestBody" not in operation for operation in path.values())
+            for operation in path.values():
+                assert "Integration role required" in operation["description"]
+                assert (
+                    "Integration role required"
+                    in operation["responses"]["403"]["description"]
+                )
             assert schema["servers"][0]["url"] == server
             assert set(
                 schema["components"]["schemas"]["OrderExportResponse"]["properties"]

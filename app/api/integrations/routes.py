@@ -8,15 +8,14 @@ from dotenv import load_dotenv
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
-from app.api.dependencies import get_current_user
 from app.api.integrations.converters.events import convert_customer_event
+from app.api.integrations.dependencies import get_integration_user
 from app.api.integrations.schemas.events import SalesforceEventRequest
-from app.application.domain import AuthenticatedUser, Role
+from app.application.domain import AuthenticatedUser
 from app.application.dtos.customer_integration.events import (
     CustomerSynchronizationResult,
 )
 from app.application.exceptions import (
-    AuthorizationException,
     CustomerNotFoundException,
     CustomerSynchronizationConflictException,
     DBException,
@@ -91,11 +90,6 @@ class SalesforceEventResponse(BaseModel):
     reference_id: int = Field(alias="referenceId")
 
 
-def _require_admin(user: AuthenticatedUser) -> None:
-    if user.role is not Role.ADMIN:
-        raise AuthorizationException("Forbidden")
-
-
 def _log_event(
     payload: SalesforceEventRequest, code: int, reference_id: int | None
 ) -> None:
@@ -120,7 +114,7 @@ def _log_event(
     summary="Receive a Salesforce integration event",
     description=(
         "Create or update a Life365 customer from a Salesforce event. "
-        "Only an authenticated admin can send events. PostgreSQL mode commits "
+        "Only an authenticated user with the integration role can send events; admins are not authorized. PostgreSQL mode commits "
         "the customer and event result in one transaction. "
         "Memory mode is temporary and does not survive a restart. Repeat the "
         "same eventId with identical content to retrieve its original result. "
@@ -134,7 +128,7 @@ def _log_event(
     responses={
         400: {"description": "Invalid customer reference"},
         401: {"description": "Missing or invalid bearer token"},
-        403: {"description": "Admin role required"},
+        403: {"description": "Integration role required; admin is not sufficient"},
         404: {"description": "Customer to update does not exist"},
         409: {"description": "Event ID reuse or customer data conflict"},
         422: {"description": "Invalid event payload or customer data"},
@@ -143,24 +137,12 @@ def _log_event(
 )
 async def receive_salesforce_event(
     payload: SalesforceEventRequest,
-    current_user: Annotated[AuthenticatedUser, Depends(get_current_user)],
+    _integration_user: Annotated[AuthenticatedUser, Depends(get_integration_user)],
     customer_synchronization_service: Annotated[
         CustomerSynchronizationService,
         Depends(get_customer_synchronization_service),
     ],
 ) -> SalesforceEventResponse:
-    try:
-        _require_admin(current_user)
-    except AuthorizationException as exc:
-        _log_event(
-            payload,
-            status.HTTP_403_FORBIDDEN,
-            getattr(payload, "reference_id", None),
-        )
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)
-        ) from exc
-
     event = convert_customer_event(payload)
     try:
         result: CustomerSynchronizationResult = (

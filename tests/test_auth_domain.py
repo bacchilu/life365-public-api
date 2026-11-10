@@ -25,6 +25,7 @@ def test_role_values_are_normalized_runtime_values() -> None:
     assert Role.ADMIN.value == "admin"
     assert Role.BUYER.value == "buyer"
     assert Role.CUSTOMER.value == "customer"
+    assert Role.INTEGRATION.value == "integration"
 
 
 def test_principal_type_values_match_runtime_sources() -> None:
@@ -140,6 +141,11 @@ def test_admin_role_normalization(source_role: str) -> None:
 @pytest.mark.parametrize("source_role", ["BUYER", "buyer", " BUYER "])
 def test_buyer_role_normalization(source_role: str) -> None:
     assert Role.from_internal_role(source_role) is Role.BUYER
+
+
+@pytest.mark.parametrize("source_role", ["INTEGRATION", "integration", " Integration "])
+def test_integration_role_normalization(source_role: str) -> None:
+    assert Role.from_internal_role(source_role) is Role.INTEGRATION
 
 
 @pytest.mark.parametrize("source_role", ["CUSTOMER", "", "unknown"])

@@ -2,7 +2,7 @@
 
 ## Scope And Direction
 
-These admin-only operations notify Salesforce about a customer **already saved
+These integration-only operations notify Salesforce about a customer **already saved
 and committed in Life365**:
 
 | Method and route | Outbound event | Successful local response |
@@ -116,7 +116,7 @@ create. No PostgreSQL/HTTP distributed transaction or rollback is claimed.
 |---|---|
 | 201 POST / 200 PUT | Salesforce confirmed the matching operation |
 | 401 | Missing or invalid Life365 token |
-| 403 | Life365 user is not an admin |
+| 403 | Life365 user does not have the integration role; admin is not sufficient |
 | 404 | Customer missing from the selected local database; no Salesforce call |
 | 409 | Salesforce returned a conflict |
 | 422 | Invalid ID, nonempty body, or local data cannot form the shared DTO |
@@ -144,10 +144,7 @@ AUTH_TOKEN=$(curl --fail-with-body -sS "$BASE_URL/auth/login" \
   --data-raw '{"username":"salesforce","password":"romi","principal_type":"user"}' \
   | jq -er '.access_token')
 
-# Inspect local customers first; the ID is local to life365_sandbox.
-curl --fail-with-body -sS "$BASE_URL/customers?limit=10&offset=0" \
-  -H "Authorization: Bearer $AUTH_TOKEN" | jq
-
+# Select an existing ID in life365_sandbox. GET /customers requires a separate admin token.
 CUSTOMER_ID=1
 # Creates an Account using referenceId=1; do not run blindly on an existing reference.
 curl --fail-with-body -sS -X POST \
@@ -270,7 +267,8 @@ production databases, and runtime customer data were not changed.
 | File | Responsibility and reason |
 |---|---|
 | `app/api/integrations/exports.py` | Defines POST/PUT, the response schema, body/path rules, Swagger descriptions, and HTTP error translation. It does not access SQL or HTTP clients. |
-| `app/api/integrations/export_dependencies.py` | Enforces admin access and composes the normal service with the configured PostgreSQL reader and lazy real Salesforce adapter. |
+| `app/api/integrations/dependencies.py` | Shared integration-role guard for incoming events and all outgoing exports. |
+| `app/api/integrations/export_dependencies.py` | Requires the shared integration guard and composes the normal service with the configured PostgreSQL reader and lazy real Salesforce adapter. |
 | `app/api/integrations/__init__.py` | Registers incoming and outgoing routers together so both FastAPI applications reuse them. |
 | `app/api/sandbox/services.py` | Composes the export service with the sandbox DSN and the same real remote adapter; other sandbox services remain isolated. |
 | `app/api/sandbox/__init__.py` | Overrides only the export service's database composition for the mounted app and updates its external-call description. |
@@ -308,7 +306,7 @@ production databases, and runtime customer data were not changed.
 |---|---|
 | `tests/test_customer_export_service.py` | Verifies full snapshots, new event identity, missing customers, exception preservation, and no use-case retries. |
 | `tests/test_salesforce_customer_api.py` | Verifies exact HTTP payloads, cached/concurrent auth, one 401 retry, no other retries, settings, response validation, and credential-safe errors. |
-| `tests/test_customer_export_api.py` | Verifies POST/PUT, admin checks, normal/sandbox reader selection, input rules, error mapping, and OpenAPI. |
+| `tests/test_customer_export_api.py` | Verifies POST/PUT, integration-role checks, normal/sandbox reader selection, input rules, error mapping, and OpenAPI. |
 | `tests/test_customer_export_postgresql.py` | Verifies seeded/full-round-trip reads, exact values, invalid legacy data, authenticated exports through the real adapter with mocked HTTP, and unchanged customer/event tables. |
 | `scripts/local_postgres/__main__.py` | Adds export database tests to the existing guarded `make test-postgresql` command. |
 | `.env.example` | Documents optional destination and timeout variables without secrets. |

@@ -33,12 +33,17 @@ class _Credentials(CredentialsGateway):
     async def authenticate_internal_user(
         self, username: str, password: str
     ) -> PrincipalIdentity:
-        if password != "test-password" or username not in ("admin", "buyer"):
+        roles = {
+            "admin": Role.ADMIN,
+            "buyer": Role.BUYER,
+            "integration": Role.INTEGRATION,
+        }
+        if password != "test-password" or username not in roles:
             raise AuthenticationException("Invalid credentials")
         return PrincipalIdentity(
             id=1,
             username=username,
-            role=Role.ADMIN if username == "admin" else Role.BUYER,
+            role=roles[username],
             principal_type=PrincipalType.USER,
         )
 
@@ -163,6 +168,56 @@ async def test_tokens_sessions_and_dependency_overrides_are_separate(
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("prefix", ["", "/sandbox"])
+async def test_integration_user_can_log_in_validate_and_log_out(
+    apps: tuple, prefix: str
+) -> None:
+    normal, sandbox, normal_auth = apps
+    auth = normal_auth if prefix == "" else sandbox.state.sandbox_services.auth
+
+    async with _client(normal) as client:
+        response = await client.post(
+            prefix + "/auth/login",
+            json={
+                "username": "integration",
+                "password": "test-password",
+                "principal_type": "user",
+            },
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["user"] == {
+            "id": 1,
+            "username": "integration",
+            "role": "integration",
+            "principal_type": "user",
+        }
+        assert body["token_type"] == "bearer"
+        token = body["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+        user = await auth.validate_token(token)
+        assert user.role is Role.INTEGRATION
+        assert user.principal_type is PrincipalType.USER
+        assert user.permissions == frozenset()
+
+        for path in ("/customers", "/products"):
+            denied = await client.get(prefix + path, headers=headers)
+            assert denied.status_code == 403
+
+        other_prefix = "/sandbox" if prefix == "" else ""
+        wrong_environment = await client.post(
+            other_prefix + "/auth/logout", headers=headers
+        )
+        assert wrong_environment.status_code == 401
+        logged_out = await client.post(prefix + "/auth/logout", headers=headers)
+        assert logged_out.status_code == 200
+        assert logged_out.json() == {"status": "ok"}
+        assert (
+            await client.post(prefix + "/auth/logout", headers=headers)
+        ).status_code == 401
+
+
+@pytest.mark.anyio
 async def test_all_sandbox_mappers_use_only_the_explicit_connection(
     apps: tuple,
 ) -> None:
@@ -177,7 +232,8 @@ async def test_all_sandbox_mappers_use_only_the_explicit_connection(
 
 @pytest.mark.anyio
 @pytest.mark.parametrize(
-    ("username", "principal_type"), [("buyer", "user"), ("customer", "customer")]
+    ("username", "principal_type"),
+    [("buyer", "user"), ("customer", "customer"), ("integration", "user")],
 )
 async def test_sandbox_keeps_admin_authorization(
     apps: tuple, username: str, principal_type: str
@@ -224,6 +280,12 @@ async def test_mounted_swagger_and_openapi_honor_proxy_root_path(
         assert response.status_code == 200
         schema = response.json()
         assert schema["info"]["title"] == "Life365 Public API Sandbox"
+        assert set(schema["components"]["schemas"]["Role"]["enum"]) == {
+            "admin",
+            "buyer",
+            "customer",
+            "integration",
+        }
         assert {"url": prefix + "/sandbox"} in schema["servers"]
         assert {
             "/auth/login",
@@ -241,6 +303,15 @@ async def test_mounted_swagger_and_openapi_honor_proxy_root_path(
             assert (
                 schema["components"]["schemas"][name]["additionalProperties"] is False
             )
+        for path, operations in schema["paths"].items():
+            if path.startswith("/integrations/"):
+                for operation in operations.values():
+                    assert "integration role" in operation["description"].lower()
+                    assert (
+                        "Integration role required"
+                        in operation["responses"]["403"]["description"]
+                    )
+                    assert operation["security"] == [{"HTTPBearer": []}]
 
 
 @pytest.mark.anyio

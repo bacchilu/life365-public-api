@@ -1,4 +1,4 @@
-"""Admin-only synchronous order exports; never write the Life365 order."""
+"""Integration-only synchronous order exports; never write the Life365 order."""
 
 from typing import Annotated, Any
 from uuid import UUID
@@ -19,7 +19,7 @@ from app.application.exceptions import (
 )
 from app.application.services.order_export_service import OrderExportService
 
-from .export_dependencies import get_export_admin
+from .dependencies import get_integration_user
 from .order_export_dependencies import get_order_export_service
 
 router = APIRouter(tags=["integrations"])
@@ -34,7 +34,7 @@ class OrderExportResponse(BaseModel):
 
 _RESPONSES: dict[int | str, dict[str, Any]] = {
     401: {"description": "Missing or invalid Life365 bearer token"},
-    403: {"description": "Admin role required"},
+    403: {"description": "Integration role required; admin is not sufficient"},
     404: {
         "description": "Local order missing, Salesforce customer not synchronized, or remote order missing on DELETE"
     },
@@ -48,7 +48,7 @@ _RESPONSES: dict[int | str, dict[str, Any]] = {
 }
 _DESCRIPTION = (
     "Read an existing order from this environment's PostgreSQL database and send one "
-    "event to Salesforce. Admin role required; no request body is accepted. "
+    "event to Salesforce. Integration role required; admins are not authorized. No request body is accepted. "
     "referenceId is orders.id; lines use products.id, not stock IDs. "
     "Both normal and /sandbox endpoints call the same real Salesforce API, currently UAT. "
     "The customer must already exist in Salesforce; missing products may be created "
@@ -117,7 +117,7 @@ async def _export(
 async def create_salesforce_order(
     order_id: Annotated[int, Path(ge=1)],
     request: Request,
-    _admin: Annotated[AuthenticatedUser, Depends(get_export_admin)],
+    _integration_user: Annotated[AuthenticatedUser, Depends(get_integration_user)],
     service: Annotated[OrderExportService, Depends(get_order_export_service)],
 ) -> OrderExportResponse:
     return await _export(order_id, "order.created", request, service)
@@ -134,7 +134,7 @@ async def create_salesforce_order(
 async def update_salesforce_order(
     order_id: Annotated[int, Path(ge=1)],
     request: Request,
-    _admin: Annotated[AuthenticatedUser, Depends(get_export_admin)],
+    _integration_user: Annotated[AuthenticatedUser, Depends(get_integration_user)],
     service: Annotated[OrderExportService, Depends(get_order_export_service)],
 ) -> OrderExportResponse:
     return await _export(order_id, "order.updated", request, service)
@@ -151,7 +151,7 @@ async def update_salesforce_order(
 async def delete_salesforce_order(
     order_id: Annotated[int, Path(ge=1)],
     request: Request,
-    _admin: Annotated[AuthenticatedUser, Depends(get_export_admin)],
+    _integration_user: Annotated[AuthenticatedUser, Depends(get_integration_user)],
     service: Annotated[OrderExportService, Depends(get_order_export_service)],
 ) -> OrderExportResponse:
     return await _export(order_id, "order.deleted", request, service)

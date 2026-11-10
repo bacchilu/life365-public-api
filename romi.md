@@ -59,13 +59,18 @@ Il seed del database locale include questo account applicativo:
 | Username | `salesforce` |
 | Password in chiaro | `romi` |
 | `principal_type` | `user` |
-| Ruolo | `admin` |
+| Ruolo | `integration` |
 
 Sono **credenziali di esempio della sandbox**, non credenziali Salesforce OAuth
 né credenziali di produzione. Non usare questo ambiente con dati sensibili e non
 esporlo a utenti non autorizzati.
 
 ## Autenticazione
+
+Tutte le API `/integrations` richiedono il ruolo `integration`, con
+`principal_type: "user"`. Gli utenti `admin`, `buyer` e `customer` ricevono
+HTTP `403`. L'utente sandbox `salesforce` mantiene la password `romi`, ma usa
+ora il ruolo `integration`. `GET /customers` rimane riservata ad `admin`.
 
 Gli esempi richiedono `curl` e si eseguono dalla cartella principale del
 repository. Verificare che `API_URL` includa `/sandbox` prima di inviare i test.
@@ -88,7 +93,7 @@ Copiare il valore `access_token` dalla risposta:
 AUTH_TOKEN='<ACCESS_TOKEN>'
 ```
 
-Il token deve appartenere a un utente con ruolo **admin**. Le credenziali reali
+Il token deve appartenere a un utente con ruolo **integration**. Le credenziali reali
 di produzione devono essere fornite separatamente e non inserite nel repository.
 Un token sandbox non funziona sugli endpoint esistenti e viceversa: la risposta
 è HTTP `401`. Per cambiare ambiente occorre autenticarsi nuovamente sul relativo
@@ -156,14 +161,14 @@ o reload dell'API occorre autenticarsi di nuovo. Usare un solo worker API.
 ## Limiti e durata dei dati sandbox
 
 - Creazione, aggiornamenti e storico degli eventi vengono salvati solo nel
-  database locale. Le operazioni di sincronizzazione richiedono il ruolo admin.
+  database locale. Le operazioni di sincronizzazione richiedono il ruolo integration.
 - Le raccomandazioni prodotto restituiscono HTTP `501`: non viene effettuata
   alcuna chiamata al servizio esterno. Gli eventi ricevuti non generano chiamate
   in uscita verso Salesforce.
 - Eccezione esplicita: i nuovi endpoint `POST` e `PUT`
   `/sandbox/integrations/salesforce/customers/{id}` leggono un customer locale
   esistente e lo inviano realmente alla sandbox Salesforce. Non accettano un body
-  e richiedono il ruolo admin. La `PUT` invia tutti i dati condivisi e li
+  e richiedono il ruolo integration. La `PUT` invia tutti i dati condivisi e li
   sovrascrive sul lato Salesforce. Vedi la
   [guida di esportazione](docs/integrations/SALESFORCE_CUSTOMER_EXPORT.md).
 - PostgreSQL usa memoria temporanea: fermare il suo container elimina sia la

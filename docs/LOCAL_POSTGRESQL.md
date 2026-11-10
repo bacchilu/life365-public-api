@@ -163,8 +163,8 @@ were selected for each of `CONFIRMED`, `DELIVERED`, and `UNDELIVERABLE`, with
 their linked customers, order lines, stock records, and products. Reference
 catalogs and required category ancestors were included. No full data dump was
 made; customer credentials and contact details were replaced. The local
-`salesforce` account uses the same username and admin role as production,
-but a separate local-only password. No production passwords are stored in
+`salesforce` account uses the `integration` role and a separate local-only
+password. It does not change the corresponding production account. No production passwords are stored in
 the seed.
 
 | Table | Seed Rows |
@@ -210,14 +210,19 @@ These application accounts are initialized inside the sandbox:
 |---|---|---|
 | `sandbox-admin` | `sandbox-admin` | admin / user |
 | `sandbox-buyer` | `sandbox-buyer` | buyer / user |
-| `salesforce` | `romi` | admin / user |
+| `salesforce` | `romi` | integration / user |
 | `sandbox-customer-1` through `sandbox-customer-7` | `sandbox-customer` | customer / customer |
 
 The sandbox's `salesforce` account is a separate row in `public.users`, with
-a local ID, role `ADMIN`, and `enabled = true`. It is included directly in
+a local ID, role `INTEGRATION`, and `enabled = true`. It is included directly in
 `docker/postgres/sandbox/data.sql` and is recreated with the other seed data
 whenever PostgreSQL initializes its empty temporary storage. The other sample
 accounts are synthetic and have no production counterparts.
+
+For an existing sandbox, apply the
+[guarded account upgrade](SANDBOX_API.md#upgrade-an-existing-sandbox-account)
+after deploying the integration-role authorization. Do not restart PostgreSQL
+or reload its seed just to change a role.
 
 Existing HTTP routes still authenticate using their original database, not these
 sandbox rows. `/sandbox/auth/login` authenticates against the local rows instead.

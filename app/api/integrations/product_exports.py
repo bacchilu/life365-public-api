@@ -1,4 +1,4 @@
-"""Admin-only product notifications; no product is written or deleted locally."""
+"""Integration-only product notifications; no product is changed locally."""
 
 from typing import Annotated, Any
 from uuid import UUID
@@ -19,7 +19,7 @@ from app.application.exceptions import (
 )
 from app.application.services.product_export_service import ProductExportService
 
-from .export_dependencies import get_export_admin
+from .dependencies import get_integration_user
 from .product_export_dependencies import get_product_export_service
 
 router = APIRouter(tags=["integrations"])
@@ -34,7 +34,7 @@ class ProductExportResponse(BaseModel):
 
 _RESPONSES: dict[int | str, dict[str, Any]] = {
     401: {"description": "Missing or invalid Life365 bearer token"},
-    403: {"description": "Admin role required"},
+    403: {"description": "Integration role required; admin is not sufficient"},
     404: {
         "description": "Life365 product missing, or Salesforce product missing on DELETE"
     },
@@ -46,7 +46,7 @@ _RESPONSES: dict[int | str, dict[str, Any]] = {
 }
 _DESCRIPTION = (
     "Read an existing product from this environment's PostgreSQL database and "
-    "send one event to Salesforce. No request body is accepted. Admin role is required. "
+    "send one event to Salesforce. No request body is accepted. Integration role is required; admins are not authorized. "
     "referenceId is products.id, never product_stocks.id. Both normal and /sandbox "
     "endpoints call the same real Salesforce API, currently its UAT sandbox. "
     "No local product, stock, or event state is changed. Each call generates a new "
@@ -108,7 +108,7 @@ async def _export(
 async def create_salesforce_product(
     product_id: Annotated[int, Path(ge=1)],
     request: Request,
-    _admin: Annotated[AuthenticatedUser, Depends(get_export_admin)],
+    _integration_user: Annotated[AuthenticatedUser, Depends(get_integration_user)],
     service: Annotated[ProductExportService, Depends(get_product_export_service)],
 ) -> ProductExportResponse:
     return await _export(product_id, "product.created", request, service)
@@ -125,7 +125,7 @@ async def create_salesforce_product(
 async def update_salesforce_product(
     product_id: Annotated[int, Path(ge=1)],
     request: Request,
-    _admin: Annotated[AuthenticatedUser, Depends(get_export_admin)],
+    _integration_user: Annotated[AuthenticatedUser, Depends(get_integration_user)],
     service: Annotated[ProductExportService, Depends(get_product_export_service)],
 ) -> ProductExportResponse:
     return await _export(product_id, "product.updated", request, service)
@@ -142,7 +142,7 @@ async def update_salesforce_product(
 async def delete_salesforce_product(
     product_id: Annotated[int, Path(ge=1)],
     request: Request,
-    _admin: Annotated[AuthenticatedUser, Depends(get_export_admin)],
+    _integration_user: Annotated[AuthenticatedUser, Depends(get_integration_user)],
     service: Annotated[ProductExportService, Depends(get_product_export_service)],
 ) -> ProductExportResponse:
     return await _export(product_id, "product.deleted", request, service)

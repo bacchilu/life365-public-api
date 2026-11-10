@@ -3,7 +3,7 @@
 ## Configure The Backend
 
 `POST /integrations/salesforce/events` accepts `customer.created` and
-`customer.updated` from authenticated admins. It uses the in-memory backend
+`customer.updated` from authenticated users with the `integration` role. It uses the in-memory backend
 unless `CUSTOMER_SYNC_BACKEND=postgresql` is set. In-memory customer and event
 state is lost on restart and is not shared between workers.
 
@@ -70,15 +70,20 @@ with old fingerprints. Requests containing `resourceVersion` now fail with 422;
 
 ## Send A Full Create Event
 
-Log in as an internal admin and keep the returned `access_token`:
+Log in as an internal user with role `integration` and keep the returned
+`access_token`. An admin token is not sufficient. Normal production accounts
+must be configured explicitly with `users.role = 'INTEGRATION'`; this change
+does not modify them automatically. The seeded sandbox account is
+`salesforce` / `romi`. For an already running sandbox, see the
+[targeted role upgrade](../SANDBOX_API.md#upgrade-an-existing-sandbox-account).
 
 ```bash
 API_URL=http://127.0.0.1:8000
 curl --fail-with-body -sS -X POST "$API_URL/auth/login" \
   -H 'Content-Type: application/json' \
   -d '{
-    "username": "<admin-login>",
-    "password": "<admin-password>",
+    "username": "<integration-login>",
+    "password": "<integration-password>",
     "principal_type": "user"
   }'
 ```
@@ -147,7 +152,8 @@ JSON Merge Patch rules.
   there is no version counter or stale-event rejection.
 - An unknown `referenceId` returns `404`. Invalid customer references return
   `400`. Invalid request or database mapping data returns `422`.
-- Missing or invalid bearer tokens return `401`; non-admin roles return `403`.
+- Missing or invalid bearer tokens return `401`; roles other than `integration`,
+  including `admin`, return `403` before customer or event processing.
   Persistence failures return `503` and roll back the customer and
   event together. Retry an uncertain `503` with the same event body and ID.
 

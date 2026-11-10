@@ -21,9 +21,12 @@ async def login(
 
     Use `principal_type` to select the identity source:
 
-    - `user` authenticates admin and buyer accounts from the internal users
-      table.
+    - `user` authenticates admin, buyer, and integration accounts from the
+      internal users table.
     - `customer` authenticates customer accounts from the customers table.
+
+    Only the integration role authorizes `/integrations` endpoints; admin
+    accounts do not have implicit integration access.
 
     On success, the response includes the JWT access token, token type,
     expiration timestamp, and authenticated user details. Passwords and stored

@@ -1,6 +1,6 @@
 # Product Synchronization To Salesforce
 
-These admin-only APIs export an existing Life365 catalog product to Salesforce.
+These integration-only APIs export an existing Life365 catalog product to Salesforce.
 They read the selected Life365 database and send one synchronous HTTP request;
 they never write products, stock, or synchronization history locally.
 
@@ -14,7 +14,7 @@ they never write products, stock, or synchronization history locally.
 
 All three accept **no request body**. `product_id` means `products.id`, not
 `product_stocks.id`, an EAN, or the Salesforce record ID. The product must exist
-in the selected Life365 database. JWT authentication and the admin role are
+in the selected Life365 database. JWT authentication and the integration role are
 required before any database lookup or remote call.
 
 Normal routes use the unchanged `DATABASE_URL`. Routes with the `/sandbox`
@@ -144,7 +144,7 @@ the bundled sanitized sample and the support tables again.
 
 ## Curl Examples
 
-These examples use the deployed Life365 sandbox and its synthetic admin
+These examples use the deployed Life365 sandbox and its synthetic integration
 credentials. Set `API_URL=http://127.0.0.1:8000/sandbox` for native local testing.
 New code must be deployed before the new endpoints exist on the server.
 
@@ -193,7 +193,8 @@ All three return:
 ```
 
 For normal production data, use `https://b2b.life365.eu/public-api` and obtain
-a normal admin token. Sandbox credentials and tokens do not work there.
+a normal integration-role token. Admin, buyer, and customer roles cannot call
+these APIs. Sandbox credentials and tokens do not work on normal routes.
 
 ## Delivery And Errors
 
@@ -211,7 +212,7 @@ without dumping credentials, access tokens, or remote response bodies.
 
 | Life365 status | Meaning |
 |---|---|
-| 401 / 403 | Invalid Life365 token / admin role required |
+| 401 / 403 | Invalid Life365 token / integration role required, including for admins |
 | 404 | Local product absent, or remote product absent on DELETE |
 | 409 | Salesforce reports a conflict |
 | 422 | Invalid ID/body or unrepresentable title, description, brand, or category |
@@ -256,7 +257,7 @@ not by a live call. No live Salesforce business writes are needed to run tests.
 | `app/infrastructure/salesforce/auth.py` | Existing shared process token cache; authentication messages now apply to any event |
 | `app/infrastructure/salesforce/__init__.py` | Expose the new concrete product adapter |
 | `app/api/integrations/product_exports.py` | POST/PUT/DELETE, no-body/path validation, response schema, HTTP errors, OpenAPI |
-| `app/api/integrations/product_export_dependencies.py` | Admin dependency, normal database reader and lazy real gateway composition |
+| `app/api/integrations/product_export_dependencies.py` | Shared integration-role dependency, normal database reader and lazy real gateway composition |
 | `app/api/integrations/__init__.py` | Register the new routes for both applications |
 | `app/api/sandbox/services.py` | Build the service with the explicit sandbox connection and shared remote gateway |
 | `app/api/sandbox/__init__.py` | Application-local dependency override and sandbox description |
@@ -267,7 +268,7 @@ not by a live call. No live Salesforce business writes are needed to run tests.
 | `tests/test_product_export_mapping.py` | EAN, localization, nullable metadata and invalid-reference mapping tests |
 | `tests/test_product_export_service.py` | Event dispatch, missing products, lightweight delete, failures and event identity tests |
 | `tests/test_salesforce_product_api.py` | Simulated OAuth, payloads, retries, token sharing, remote failures, result/config validation |
-| `tests/test_product_export_api.py` | Routes, admin/token guards, database separation, body/path validation, errors and proxy OpenAPI |
+| `tests/test_product_export_api.py` | Routes, integration/token guards, database separation, body/path validation, errors and proxy OpenAPI |
 | `tests/test_product_export_postgresql.py` | Real isolated PostgreSQL reads, references, category fallback, HTTP flows and unchanged local state |
 | `.env.example` | Document optional product endpoint without adding real credentials |
 | `README.md` | Entry point and concise examples for the new functionality |

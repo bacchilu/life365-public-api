@@ -48,13 +48,18 @@ usare `API_URL='http://127.0.0.1:8000/sandbox'` e autenticarsi su quel server.
 ## Autenticazione
 
 Le operazioni di sincronizzazione richiedono un utente Life365 con ruolo
-**admin**, autenticato con `principal_type: "user"`. Il token da inviare è il
+**integration**, autenticato con `principal_type: "user"`. Il token da inviare è il
 JWT restituito da questa API, non il token OAuth di Salesforce.
+
+Tutte le API `/integrations`, in entrambe le direzioni, richiedono il ruolo
+`integration`: `admin`, `buyer` e `customer` ricevono HTTP `403`.
+`GET /customers` rimane riservata ad `admin`; il ruolo tecnico non eredita
+i permessi di gestione o lettura dei prodotti.
 
 ### Sandbox
 
 Il database di esempio include l'utente `salesforce`, password `romi`, con
-ruolo admin. Sono credenziali sintetiche della sandbox: non funzionano per
+ruolo integration. Sono credenziali sintetiche della sandbox: non funzionano per
 autenticarsi nell'ambiente Life365 di produzione e non sono credenziali OAuth
 Salesforce.
 
@@ -77,7 +82,7 @@ la scadenza del JWT e non registrare il token nei log.
 ### Produzione Life365
 
 Per leggere ed esportare dati reali Life365, cambiare URL base e autenticarsi
-di nuovo con un account admin di produzione. Sostituire i due placeholder;
+di nuovo con un account di produzione con ruolo `integration`. Sostituire i due placeholder;
 le credenziali reali devono essere fornite separatamente e non salvate nel
 repository.
 
@@ -87,8 +92,8 @@ PRODUCTION_API_URL='https://b2b.life365.eu/public-api'
 PRODUCTION_AUTH_TOKEN=$(curl --fail-with-body -sS -X POST "$PRODUCTION_API_URL/auth/login" \
   -H 'Content-Type: application/json' \
   --data-raw '{
-    "username": "<USERNAME_ADMIN_LIFE365>",
-    "password": "<PASSWORD_ADMIN_LIFE365>",
+    "username": "<USERNAME_INTEGRATION_LIFE365>",
+    "password": "<PASSWORD_INTEGRATION_LIFE365>",
     "principal_type": "user"
   }' | jq -er '.access_token')
 ```
@@ -261,7 +266,7 @@ Il campo remoto si chiama quindi `recordId`, non `accountId` come per i customer
 
 `order_id` è `orders.id` nel database Life365 selezionato, non il numero della
 fattura o l'ID Salesforce. L'ordine deve già essere salvato. Le tre chiamate
-richiedono il JWT di un admin Life365, non accettano un body e non modificano
+richiedono il JWT di un utente integration Life365, non accettano un body e non modificano
 ordini, righe o storico eventi nel database locale.
 
 **Prima sincronizzare il customer dell'ordine.** Salesforce richiede che
@@ -395,7 +400,7 @@ sincronizzate contemporaneamente.
 |---|---|
 | 201 su POST / 200 su PUT e DELETE | Salesforce ha confermato l'operazione e la risposta è coerente con l'evento inviato |
 | 401 | JWT Life365 assente, scaduto o non valido per questo ambiente; autenticarsi nuovamente |
-| 403 | Utente Life365 senza ruolo admin; verificare l'account utilizzato |
+| 403 | Utente Life365 senza ruolo integration, inclusi gli admin; verificare l'account utilizzato |
 | 404 | Record assente nel database Life365 selezionato; per gli ordini anche customer Salesforce non sincronizzato; per DELETE prodotto/ordine può mancare il record remoto |
 | 409 | Conflitto segnalato da Salesforce; verificare la corrispondenza remota e i vincoli di univocità |
 | 422 | ID non valido, body presente o dati Life365 non rappresentabili nel DTO; correggere la richiesta o i dati sorgente |

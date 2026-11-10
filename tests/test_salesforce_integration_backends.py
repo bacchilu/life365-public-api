@@ -69,12 +69,17 @@ class _Credentials(CredentialsGateway):
     async def authenticate_internal_user(
         self, username: str, password: str
     ) -> PrincipalIdentity:
-        if password != "test-password" or username not in ("admin", "buyer"):
+        roles = {
+            "admin": Role.ADMIN,
+            "buyer": Role.BUYER,
+            "integration": Role.INTEGRATION,
+        }
+        if password != "test-password" or username not in roles:
             raise AuthenticationException("Invalid credentials")
         return PrincipalIdentity(
             id=1 if username == "admin" else 2,
             username=username,
-            role=Role.ADMIN if username == "admin" else Role.BUYER,
+            role=roles[username],
             principal_type=PrincipalType.USER,
         )
 
@@ -244,7 +249,7 @@ async def test_jwt_create_update_replay_and_conflict_rules(
     payload = _create_payload()
     with caplog.at_level(logging.INFO, logger="app.api.integrations.routes"):
         async with _client() as client:
-            headers = await _headers(client, "admin")
+            headers = await _headers(client, "integration")
             created = await client.post(_URL, json=payload, headers=headers)
             assert created.status_code == 200, created.text
             reference_id = created.json()["referenceId"]
@@ -308,13 +313,16 @@ async def test_jwt_create_update_replay_and_conflict_rules(
 
 
 @pytest.mark.anyio
-async def test_missing_token_and_non_admin_cannot_write(backend: _Backend) -> None:
+@pytest.mark.parametrize("username", ["admin", "buyer"])
+async def test_missing_token_and_non_integration_user_cannot_write(
+    backend: _Backend, username: str
+) -> None:
     payload = _create_payload()
     async with _client() as client:
         missing = await client.post(_URL, json=payload)
         assert missing.status_code == 401
-        buyer_headers = await _headers(client, "buyer")
-        forbidden = await client.post(_URL, json=payload, headers=buyer_headers)
+        headers = await _headers(client, username)
+        forbidden = await client.post(_URL, json=payload, headers=headers)
         assert forbidden.status_code == 403
     assert _counts(backend) == (0, 0)
 
@@ -329,7 +337,7 @@ async def test_removed_resource_version_is_rejected_without_mutation(
     )
     payload["resourceVersion"] = 1
     async with _client() as client:
-        headers = await _headers(client, "admin")
+        headers = await _headers(client, "integration")
         response = await client.post(_URL, json=payload, headers=headers)
     assert response.status_code == 422
     assert any(
@@ -360,7 +368,7 @@ async def test_existing_customer_can_receive_first_update(backend: _Backend) -> 
             await work.commit()
     assert _counts(backend) == (1, 0)
     async with _client() as client:
-        headers = await _headers(client, "admin")
+        headers = await _headers(client, "integration")
         response = await client.post(
             _URL, json=_update_payload(reference_id), headers=headers
         )
@@ -377,7 +385,7 @@ async def test_concurrent_conflicting_event_ids_commit_only_one_customer(
     second = json.loads(json.dumps(first))
     second["data"]["company"]["name"] = "Conflicting customer"
     async with _client() as client:
-        headers = await _headers(client, "admin")
+        headers = await _headers(client, "integration")
         results = await asyncio.gather(
             client.post(_URL, json=first, headers=headers),
             client.post(_URL, json=second, headers=headers),
@@ -392,7 +400,7 @@ async def test_simultaneous_delivery_returns_one_committed_result(
 ) -> None:
     payload = _create_payload()
     async with _client() as client:
-        headers = await _headers(client, "admin")
+        headers = await _headers(client, "integration")
         first, second = await asyncio.gather(
             client.post(_URL, json=payload, headers=headers),
             client.post(_URL, json=payload, headers=headers),
@@ -407,7 +415,7 @@ async def test_timestamps_are_metadata_and_replay_cannot_restore_old_values(
     backend: _Backend,
 ) -> None:
     async with _client() as client:
-        headers = await _headers(client, "admin")
+        headers = await _headers(client, "integration")
         created = await client.post(_URL, json=_create_payload(), headers=headers)
         assert created.status_code == 200, created.text
         reference_id = created.json()["referenceId"]
@@ -456,7 +464,7 @@ async def test_postgresql_create_requires_ipv4_but_update_does_not(
         pytest.skip("PostgreSQL client address mapping")
 
     async with _client() as ipv4_client:
-        headers = await _headers(ipv4_client, "admin")
+        headers = await _headers(ipv4_client, "integration")
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=app, client=("::1", 12345)),
             base_url="http://testserver",
@@ -496,7 +504,7 @@ async def test_postgresql_validation_and_sql_failure_roll_back(
     invalid = _create_payload()
     invalid["data"]["billingAddress"]["regionName"] = "Unknown"
     async with _client() as client:
-        headers = await _headers(client, "admin")
+        headers = await _headers(client, "integration")
         rejected = await client.post(_URL, json=invalid, headers=headers)
         assert rejected.status_code == 422
         assert _counts(backend) == (0, 0)

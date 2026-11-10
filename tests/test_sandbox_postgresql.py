@@ -114,8 +114,8 @@ def _client(app: FastAPI) -> httpx.AsyncClient:
 
 async def _headers(
     client: httpx.AsyncClient,
-    username: str = "sandbox-admin",
-    password: str = "sandbox-admin",
+    username: str = "salesforce",
+    password: str = "romi",
     principal: str = "user",
 ) -> dict[str, str]:
     response = await client.post(
@@ -162,12 +162,59 @@ def _state(url: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         return customers, events
 
 
+def test_existing_sandbox_role_upgrade_is_scoped_and_repeatable(
+    database_url: str,
+) -> None:
+    script = (_ROOT / "docker/postgres/sandbox/integration-role.sql").read_text(
+        encoding="utf-8"
+    )
+    before = _state(database_url)
+    with psycopg.connect(database_url, autocommit=True, row_factory=dict_row) as conn:
+        conn.execute(
+            "UPDATE public.users SET role = 'ADMIN' WHERE username = 'salesforce'"
+        )
+        users = conn.execute("SELECT * FROM public.users ORDER BY id").fetchall()
+        expected = [
+            {**user, "role": "INTEGRATION"}
+            if user["username"] == "salesforce"
+            else user
+            for user in users
+        ]
+        for _ in range(2):
+            conn.execute(script)
+            assert (
+                conn.execute("SELECT * FROM public.users ORDER BY id").fetchall()
+                == expected
+            )
+    assert _state(database_url) == before
+
+
+def test_sandbox_role_upgrade_rejects_an_unexpected_account_role(
+    database_url: str,
+) -> None:
+    script = (_ROOT / "docker/postgres/sandbox/integration-role.sql").read_text(
+        encoding="utf-8"
+    )
+    before = _state(database_url)
+    with psycopg.connect(database_url, autocommit=True) as conn:
+        conn.execute(
+            "UPDATE public.users SET role = 'BUYER' WHERE username = 'salesforce'"
+        )
+        with pytest.raises(psycopg.errors.RaiseException, match="Unexpected role"):
+            conn.execute(script)
+        conn.execute("ROLLBACK")
+        assert conn.execute(
+            "SELECT role FROM public.users WHERE username = 'salesforce'"
+        ).fetchone() == ("BUYER",)
+    assert _state(database_url) == before
+
+
 @pytest.mark.anyio
 async def test_seeded_reads_authentication_and_authorization(database_url: str) -> None:
     before = _state(database_url)
     assert len(before[0]) == 7 and before[1] == []
     async with _client(_app(database_url)) as client:
-        admin = await _headers(client)
+        admin = await _headers(client, "sandbox-admin", "sandbox-admin")
         for path in ("customers", "orders", "products"):
             response = await client.get(f"/sandbox/{path}", headers=admin)
             assert response.status_code == 200, response.text
@@ -177,6 +224,7 @@ async def test_seeded_reads_authentication_and_authorization(database_url: str) 
             "db": "ok",
         }
         for username, password, principal in (
+            ("sandbox-admin", "sandbox-admin", "user"),
             ("sandbox-buyer", "sandbox-buyer", "user"),
             ("sandbox-customer-1", "sandbox-customer", "customer"),
         ):
@@ -185,10 +233,25 @@ async def test_seeded_reads_authentication_and_authorization(database_url: str) 
                 await client.post(_URL, json=_create(), headers=headers)
             ).status_code == 403
         assert (await client.post(_URL, json=_create())).status_code == 401
-        salesforce = await _headers(client, "salesforce", "romi")
+        login = await client.post(
+            "/sandbox/auth/login",
+            json={
+                "username": "salesforce",
+                "password": "romi",
+                "principal_type": "user",
+            },
+        )
+        assert login.status_code == 200
+        assert login.json()["user"] == {
+            "id": 3,
+            "username": "salesforce",
+            "role": "integration",
+            "principal_type": "user",
+        }
+        salesforce = {"Authorization": f"Bearer {login.json()['access_token']}"}
         assert (
             await client.get("/sandbox/customers", headers=salesforce)
-        ).status_code == 200
+        ).status_code == 403
         assert (
             await client.get("/sandbox/products/recommend?order_id=1", headers=admin)
         ).status_code == 501

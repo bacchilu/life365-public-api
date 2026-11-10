@@ -8,7 +8,7 @@
 | `PUT /integrations/salesforce/orders/{order_id}` | `order.updated` | 200 |
 | `DELETE /integrations/salesforce/orders/{order_id}` | `order.deleted` | 200 |
 
-All methods require a Life365 JWT and admin role, reject a nonempty body,
+All methods require a Life365 JWT and the integration role, reject a nonempty body,
 and require an existing local orders.id. Normal routes use the unchanged
 DATABASE_URL; /sandbox routes use only life365_sandbox. Both send real requests
 to the same configured Salesforce UAT API. Numeric order references share one
@@ -157,7 +157,7 @@ recordId. Logs contain event/reference/type/status, never payloads or credential
 
 | Local status | Meaning |
 |---|---|
-| 401 / 403 | Invalid/wrong-environment token / non-admin role |
+| 401 / 403 | Invalid/wrong-environment token / role other than integration, including admin |
 | 404 | Local order missing, remote customer not synchronized, remote order missing on DELETE |
 | 409 | Salesforce uniqueness conflict |
 | 422 | Invalid ID, body present, unrepresentable source or unsupported header stamp |
