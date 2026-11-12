@@ -8,9 +8,9 @@ click==8.5.1
 detect-installer==0.2.1
 dnspython==2.9.2
 email-validator==2.3.0
-fastapi==0.162.4
+fastapi==0.162.5
 fastapi-cli==0.0.33
-fastapi-cloud-cli==0.27.1
+fastapi-cloud-cli==0.28.0
 fastar==0.12.0
 googleapis-common-protos==1.76.0
 h11==0.16.0
@@ -36,8 +36,8 @@ opentelemetry-semantic-conventions==0.66b2
 packaging==26.3
 pluggy==1.7.0
 protobuf==7.36.2
-psycopg==3.3.8
-psycopg-binary==3.3.8
+psycopg==3.3.9
+psycopg-binary==3.3.9
 pycountry==26.2.16
 pydantic==2.14.3
 pydantic-extra-types==2.11.1
