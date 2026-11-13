@@ -2,7 +2,7 @@
 
 ## Scope
 
-One Docker service, `local-postgres`, uses the explicit image `postgres:18.6`.
+One Docker service, `local-postgres`, uses the explicit image `postgres:18.7`.
 It replaces the old `customer-sync-test-db` service; it does not add a second
 PostgreSQL server. Docker and host Python 3 are required for lifecycle commands.
 The existing `.venv` and project dependencies are required for application and
@@ -155,6 +155,28 @@ The lock file stays on disk deliberately; the OS lock, not file existence,
 indicates an active operation. Test runs hold the same lock to prevent a helper
 stop command from erasing their database. Manual Docker commands and manually
 launched pytest processes are not covered by this lock.
+
+## Image Upgrades
+
+Changing the image pin does not upgrade an existing container. The helper
+rejects a container that uses a different image version instead of automatically
+replacing it and losing its temporary data. This also applies to the helper's
+stop command, which validates the container image before stopping it.
+
+When both local databases can be discarded, explicitly replace only PostgreSQL:
+
+```bash
+docker compose --profile test rm --stop --force local-postgres
+make docker-test-db-up
+```
+
+These commands **erase both databases** and initialize the bundled sandbox
+sample and empty automated-test database using `postgres:18.7`. Do not run them
+while tests or sandbox operations are active. API containers and the scheduler
+are not replaced. If the service runs through the portal stack, use that
+stack's existing Compose project and override files for its replacement; do
+not accidentally start a separate Compose project. Schedule that reset
+separately from an API-only deployment.
 
 ## Sample Provenance And Limits
 

@@ -328,7 +328,7 @@ creates the shared network when it does not already exist.
 ## Local PostgreSQL
 
 `make run`, `make docker-dev-up`, `make docker-prod-up`, and
-`make docker-test-db-up` start and wait for the same `postgres:18.6` service.
+`make docker-test-db-up` start and wait for the same `postgres:18.7` service.
 An already running database container is reused without restarting it.
 Its `unless-stopped` restart policy starts it again when Docker starts after a
 host reboot, provided it was not manually stopped. Docker must itself be enabled

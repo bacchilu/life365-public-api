@@ -69,7 +69,7 @@ class LocalPostgres:
             info["Config"]["Image"] != IMAGE
             or "/var/lib/postgresql" not in info["HostConfig"]["Tmpfs"]
         ):
-            raise LocalDatabaseError("Expected postgres:18.6 with tmpfs storage")
+            raise LocalDatabaseError(f"Expected {IMAGE} with tmpfs storage")
         environment = dict(
             value.split("=", 1) for value in info["Config"]["Env"] if "=" in value
         )

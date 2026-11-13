@@ -8,7 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SERVICE = "local-postgres"
-IMAGE = "postgres:18.6"
+IMAGE = "postgres:18.7"
 SANDBOX = "life365_sandbox"
 TEST_DATABASE = "life365_public_api_test_customer_sync"
 

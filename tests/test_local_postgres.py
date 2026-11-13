@@ -5,6 +5,7 @@ from copy import deepcopy
 from unittest.mock import Mock
 
 import pytest
+import yaml
 
 import scripts.local_postgres.config as config
 import scripts.local_postgres.docker as docker
@@ -14,7 +15,7 @@ from scripts.local_postgres.config import LocalDatabaseError, operation_lock
 def _info(*, running: bool = True, healthy: bool = True) -> dict:
     return {
         "Config": {
-            "Image": "postgres:18.6",
+            "Image": "postgres:18.7",
             "Labels": {
                 "com.docker.compose.project": "test-project",
                 "com.docker.compose.service": "local-postgres",
@@ -58,6 +59,31 @@ def _postgres(monkeypatch: pytest.MonkeyPatch) -> tuple[docker.LocalPostgres, Mo
     postgres = docker.LocalPostgres()
     run.reset_mock()
     return postgres, run
+
+
+def test_compose_and_helper_use_the_same_postgresql_version() -> None:
+    compose = yaml.safe_load((config.ROOT / "docker-compose.yaml").read_text())
+    assert config.IMAGE == "postgres:18.7"
+    assert compose["services"][config.SERVICE]["image"] == config.IMAGE
+
+
+@pytest.mark.parametrize("running", [True, False])
+def test_previous_image_is_rejected_without_restart_or_recreation(
+    running: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    postgres, run = _postgres(monkeypatch)
+    info = _info(running=running)
+    info["Config"]["Image"] = "postgres:18.6"
+    run.side_effect = ["", "container-id", json.dumps([info])]
+
+    with pytest.raises(LocalDatabaseError, match=r"Expected postgres:18\.7"):
+        postgres.up()
+
+    assert all(
+        action not in call.args[0]
+        for call in run.call_args_list
+        for action in ("up", "start", "stop", "rm")
+    )
 
 
 def test_running_container_is_reused_without_start_or_recreation(

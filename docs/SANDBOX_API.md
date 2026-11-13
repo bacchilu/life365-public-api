@@ -70,7 +70,7 @@ host/port combinations are rejected. Sandbox configuration is loaded once when
 the application is constructed; restart the API after changing it.
 
 `make run`, `make docker-dev-up`, and `make docker-prod-up` already start and
-wait for the shared `postgres:18.6` container. Both Compose API services override
+wait for the shared `postgres:18.7` container. Both Compose API services override
 the sandbox host/port to `local-postgres:5432` on `local-database`, and pass the
 local password plus the two sandbox secrets. Secrets can come from `.env` or
 shell exports. No production DSN or scheduler setting is replaced.
