@@ -90,7 +90,7 @@ services:
     restart: unless-stopped
 
   local-postgres:
-    image: postgres:18.7
+    image: postgres:19.0
     restart: unless-stopped
     profiles:
       - dev

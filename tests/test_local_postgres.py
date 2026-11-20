@@ -15,7 +15,7 @@ from scripts.local_postgres.config import LocalDatabaseError, operation_lock
 def _info(*, running: bool = True, healthy: bool = True) -> dict:
     return {
         "Config": {
-            "Image": "postgres:18.7",
+            "Image": "postgres:19.0",
             "Labels": {
                 "com.docker.compose.project": "test-project",
                 "com.docker.compose.service": "local-postgres",
@@ -63,7 +63,7 @@ def _postgres(monkeypatch: pytest.MonkeyPatch) -> tuple[docker.LocalPostgres, Mo
 
 def test_compose_and_helper_use_the_same_postgresql_version() -> None:
     compose = yaml.safe_load((config.ROOT / "docker-compose.yaml").read_text())
-    assert config.IMAGE == "postgres:18.7"
+    assert config.IMAGE == "postgres:19.0"
     assert compose["services"][config.SERVICE]["image"] == config.IMAGE
 
 
@@ -73,10 +73,10 @@ def test_previous_image_is_rejected_without_restart_or_recreation(
 ) -> None:
     postgres, run = _postgres(monkeypatch)
     info = _info(running=running)
-    info["Config"]["Image"] = "postgres:18.6"
+    info["Config"]["Image"] = "postgres:18.7"
     run.side_effect = ["", "container-id", json.dumps([info])]
 
-    with pytest.raises(LocalDatabaseError, match=r"Expected postgres:18\.7"):
+    with pytest.raises(LocalDatabaseError, match=r"Expected postgres:19\.0"):
         postgres.up()
 
     assert all(

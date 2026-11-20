@@ -2,7 +2,7 @@
 
 ## Scope
 
-One Docker service, `local-postgres`, uses the explicit image `postgres:18.7`.
+One Docker service, `local-postgres`, uses the explicit image `postgres:19.0`.
 It replaces the old `customer-sync-test-db` service; it does not add a second
 PostgreSQL server. Docker and host Python 3 are required for lifecycle commands.
 The existing `.venv` and project dependencies are required for application and
@@ -171,12 +171,14 @@ make docker-test-db-up
 ```
 
 These commands **erase both databases** and initialize the bundled sandbox
-sample and empty automated-test database using `postgres:18.7`. Do not run them
-while tests or sandbox operations are active. API containers and the scheduler
-are not replaced. If the service runs through the portal stack, use that
-stack's existing Compose project and override files for its replacement; do
-not accidentally start a separate Compose project. Schedule that reset
-separately from an API-only deployment.
+sample and empty automated-test database using `postgres:19.0`. The upgrade
+from 18 to 19 initializes a fresh data directory on tmpfs; it does not migrate
+existing data or change the database configured by `DATABASE_URL`. Do not run
+the commands while tests or sandbox operations are active. API containers and
+the scheduler are not replaced. If the service runs through the portal stack,
+use that stack's existing Compose project and override files. Do not start a
+separate Compose project by mistake. Schedule that reset separately from an
+API-only deployment.
 
 ## Sample Provenance And Limits
 
