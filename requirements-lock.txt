@@ -2,8 +2,8 @@ agent-detector==2.0.0
 annotated-doc==0.0.7
 annotated-types==0.8.0
 anyio==4.16.0
-certifi==2026.10.23
-charset-normalizer==3.5.2
+certifi==2026.11.20
+charset-normalizer==3.5.3
 click==8.5.1
 detect-installer==0.2.1
 dnspython==2.9.2
@@ -48,14 +48,14 @@ PyJWT==2.15.1
 pytest==9.2.0
 python-dotenv==1.2.4
 python-multipart==0.0.34
-PyYAML==6.0.3
+PyYAML==6.0.4
 requests==2.34.2
 rich==15.0.0
 rich-toolkit==0.20.6
 rignore==0.8.1
 rstr==4.0.0
 schwifty==2026.11.3
-sentry-sdk==2.75.0
+sentry-sdk==3.0.0
 shellingham==1.5.4
 starlette==1.10.0
 truststore==0.10.5
