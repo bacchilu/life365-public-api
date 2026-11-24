@@ -33,7 +33,7 @@ opentelemetry-exporter-otlp-proto-http==1.45.2
 opentelemetry-proto==1.45.2
 opentelemetry-sdk==1.45.2
 opentelemetry-semantic-conventions==0.66b2
-packaging==26.3
+packaging==26.4
 pluggy==1.7.0
 protobuf==7.36.2
 psycopg==3.3.9
@@ -54,7 +54,7 @@ rich==15.0.0
 rich-toolkit==0.20.6
 rignore==0.8.1
 rstr==4.0.0
-schwifty==2026.11.3
+schwifty==2026.11.4
 sentry-sdk==3.0.0
 shellingham==1.5.4
 starlette==1.10.0
