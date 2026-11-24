@@ -1,6 +1,9 @@
 """Local data and sessions; exports use the real configured Salesforce API."""
 
 from app.api.integrations.export_dependencies import get_salesforce_customer_gateway
+from app.api.integrations.order_cross_sell_dependencies import (
+    build_order_cross_sell_service,
+)
 from app.api.integrations.order_export_dependencies import get_salesforce_order_gateway
 from app.api.integrations.product_export_dependencies import (
     get_salesforce_product_gateway,
@@ -12,6 +15,7 @@ from app.application.services.customer_synchronization_service import (
     CustomerSynchronizationService,
 )
 from app.application.services.health_service import HealthService
+from app.application.services.order_cross_sell_service import OrderCrossSellService
 from app.application.services.order_export_service import OrderExportService
 from app.application.services.order_service import OrderService
 from app.application.services.product_export_service import ProductExportService
@@ -80,6 +84,9 @@ class SandboxServices:
             PostgreSQLOrderExportDataMapper(self._settings.database_connection),
             get_salesforce_order_gateway(),
         )
+
+    def order_cross_sell(self) -> OrderCrossSellService:
+        return build_order_cross_sell_service(self._settings.database_connection)
 
     def customer_synchronization(
         self, client_ip: str | None

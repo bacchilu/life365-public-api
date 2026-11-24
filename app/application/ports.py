@@ -20,6 +20,11 @@ from app.application.dtos.customer_integration.export import (
     CustomerExportEvent,
     CustomerExportResult,
 )
+from app.application.dtos.order_cross_sell import (
+    OrderCrossSellReceipt,
+    OrderCrossSellRequest,
+    OrderCrossSellState,
+)
 from app.application.dtos.order_integration import (
     IntegrationOrderData,
     OrderExportEvent,
@@ -80,6 +85,18 @@ class OrderExportReader(Protocol):
 
 class SalesforceOrderGateway(Protocol):
     async def send_order(self, event: OrderExportEvent) -> OrderExportResult: ...
+
+
+class OrderCrossSellReader(Protocol):
+    async def get_cross_sell_state(
+        self, order_id: int
+    ) -> OrderCrossSellState | None: ...
+
+
+class SalesforceMarketingGateway(Protocol):
+    async def send_order_cross_sell(
+        self, request: OrderCrossSellRequest
+    ) -> OrderCrossSellReceipt: ...
 
 
 class CustomerSynchronizationGateway(Protocol):

@@ -10,7 +10,12 @@ import httpx
 import psycopg
 import pytest
 
+from app.api.integrations import order_cross_sell_dependencies as marketing_composition
 from app.api.integrations import order_export_dependencies as composition
+from app.application.dtos.order_cross_sell import (
+    OrderCrossSellReceipt,
+    OrderCrossSellRequest,
+)
 from app.application.exceptions import InvalidOrderDataException
 from app.infrastructure.data_mapper.order_export import PostgreSQLOrderExportDataMapper
 from app.infrastructure.data_mapper.order_export.query import DETAILS_QUERY
@@ -28,6 +33,45 @@ def state(url: str) -> list[tuple[object, ...]]:
             UNION ALL SELECT 'details', jsonb_agg(to_jsonb(d) ORDER BY d.id) FROM public.order_details AS d
             UNION ALL SELECT 'products', jsonb_agg(to_jsonb(p) ORDER BY p.id) FROM public.products AS p
         """).fetchall()
+
+
+@pytest.mark.anyio
+async def test_cross_sell_checks_committed_order_and_does_not_modify_it(
+    database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sent: list[OrderCrossSellRequest] = []
+
+    class Gateway:
+        async def send_order_cross_sell(
+            self, request: OrderCrossSellRequest
+        ) -> OrderCrossSellReceipt:
+            sent.append(request)
+            return OrderCrossSellReceipt(("r1", "r2", "r3"))
+
+    monkeypatch.setattr(marketing_composition, "SalesforceMarketingAPI", Gateway)
+    path = "/sandbox/integrations/salesforce/orders/1001/marketing/cross-sell"
+    payload = {"related_product": ["117", "118", "123"]}
+    async with _client(_app(database_url)) as client:
+        headers = await _headers(client, "salesforce", "romi")
+        assert (
+            await client.post(path, headers=headers, json=payload)
+        ).status_code == 409
+        with psycopg.connect(database_url) as conn:
+            conn.execute(
+                "UPDATE orders SET logistic_state = 'ACCEPTED' WHERE id = 1001"
+            )
+        assert (
+            await client.post(path, headers=headers, json=payload)
+        ).status_code == 409
+        assert sent == []
+        with psycopg.connect(database_url) as conn:
+            conn.execute("UPDATE orders SET invoice_doc_n = 25 WHERE id = 1001")
+        before = state(database_url)
+        assert (
+            await client.post(path, headers=headers, json=payload)
+        ).status_code == 201
+        assert state(database_url) == before
+    assert sent == [OrderCrossSellRequest(1001, 4, (117, 118, 123))]
 
 
 @pytest.mark.anyio

@@ -21,6 +21,11 @@ class SalesforceSettings:
     order_url: str | None = None
 
     @property
+    def marketing_products_url(self) -> str:
+        token = urlsplit(self.token_url)
+        return f"{token.scheme}://{token.netloc}/services/apexrest/marketing/products/"
+
+    @property
     def order_sync_url(self) -> str:
         if self.order_url is not None:
             return self.order_url

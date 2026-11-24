@@ -372,6 +372,44 @@ già avviata prima di questa modifica, applicare lo script additivo descritto
 nella [guida tecnica ordini](docs/integrations/SALESFORCE_ORDER_EXPORT.md), senza
 riavviare PostgreSQL o perdere i dati temporanei.
 
+## Cross-selling post-ordine (Flusso 1)
+
+`POST /integrations/salesforce/orders/{order_id}/marketing/cross-sell` invia
+tre consigli di prodotto a Salesforce Marketing. Non modifica né sincronizza
+l'ordine. Il chiamante (`life365-portal-api`) sceglie i prodotti e decide quando
+inviare, dopo il commit dello stato e della fattura. L'ordine deve risultare
+`ACCEPTED` in `orders.logistic_state` e avere `invoice_doc_n > 0`.
+
+```bash
+curl --fail-with-body -sS -X POST \
+  "$API_URL/integrations/salesforce/orders/$ORDER_ID/marketing/cross-sell" \
+  -H "Authorization: Bearer $AUTH_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"related_product":["117","118","123"]}'
+```
+
+Impostare `ORDER_ID` a un ordine idoneo nell'ambiente scelto. L'API legge il
+`customer_id` dall'ordine nel database selezionato: il chiamante non deve
+inviarlo né può sceglierlo separatamente. Cliente e prodotti devono già
+esistere in Salesforce. Usare gli ID Life365 come stringhe decimali, in ordine
+di raccomandazione, senza duplicati. Salesforce riceve ancora `customer_id`,
+`order_id` e `related_product`; l'API ricava `customer_id` dall'ordine.
+`related_product2` e altri campi aggiuntivi non sono ammessi.
+
+- `201`: Salesforce ha accettato il Flusso 1. La risposta contiene `success`,
+  `flow: "recommended_products"`, `recordsCreated` e `recordIds`. Non
+  conferma l'invio di una mail.
+- `404`: ordine assente nel database dell'ambiente selezionato.
+- `409`: ordine non accettato, fattura assente/non positiva o customer non valido.
+- `422`: body invalido; il body accetta solo `related_product`.
+- `502`, `503`, `504`: errore a monte, configurazione/database indisponibili
+  o timeout. Il chiamante gestisce i tentativi e previene invii duplicati;
+  dopo un timeout l'esito remoto può essere incerto.
+
+Anche `/sandbox` legge l'ordine dal proprio database e invia realmente verso
+l'API Marketing sullo stesso host usato per l'autenticazione Salesforce.
+Gli ordini del seed non sono idonei così come sono.
+
 ## Quando richiamare la sincronizzazione
 
 1. Creare o modificare il record attraverso gli strumenti Life365 esistenti.

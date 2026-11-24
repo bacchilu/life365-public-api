@@ -72,3 +72,7 @@ class InvalidOrderReferenceException(Exception):
 
 class InvalidOrderDataException(Exception):
     """Order data or references cannot be represented without changing meaning."""
+
+
+class OrderCrossSellNotReadyException(Exception):
+    """The order does not meet the requirements for post-order cross-selling."""
