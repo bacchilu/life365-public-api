@@ -10,6 +10,9 @@ from app.api.application import create_api_application
 from app.api.customers.routes import get_customer_service
 from app.api.dependencies import get_auth_service
 from app.api.health.routes import get_health_service
+from app.api.integrations.customer_reactivation_dependencies import (
+    get_customer_reactivation_service,
+)
 from app.api.integrations.export_dependencies import get_customer_export_service
 from app.api.integrations.order_cross_sell_dependencies import (
     get_order_cross_sell_service,
@@ -26,6 +29,9 @@ from app.application.exceptions import (
 )
 from app.application.services.auth_service import AuthService
 from app.application.services.customer_export_service import CustomerExportService
+from app.application.services.customer_reactivation_service import (
+    CustomerReactivationService,
+)
 from app.application.services.customer_service import CustomerService
 from app.application.services.customer_synchronization_service import (
     CustomerSynchronizationService,
@@ -48,8 +54,9 @@ def create_sandbox_application(settings: SandboxSettings | None = None) -> FastA
     sandbox.description = (
         "Isolated local PostgreSQL sandbox using the same endpoint contracts. "
         "Tokens and in-memory sessions are sandbox-only. Product recommendations "
-        "return 501. Customer, product and order exports, and order cross-selling, make real calls to the configured Salesforce "
-        "API, shared with normal endpoints. Run a single worker."
+        "return 501. Customer, product and order exports, order cross-selling, and "
+        "customer reactivation make real calls to the configured Salesforce API, "
+        "shared with normal endpoints. Run a single worker."
     )
     try:
         services = SandboxServices(
@@ -106,6 +113,9 @@ def create_sandbox_application(settings: SandboxSettings | None = None) -> FastA
     async def order_cross_sell() -> OrderCrossSellService:
         return require_services().order_cross_sell()
 
+    async def customer_reactivation() -> CustomerReactivationService:
+        return require_services().customer_reactivation()
+
     sandbox.dependency_overrides.update(
         {
             get_auth_service: auth,
@@ -118,6 +128,7 @@ def create_sandbox_application(settings: SandboxSettings | None = None) -> FastA
             get_product_export_service: export_product,
             get_order_export_service: export_order,
             get_order_cross_sell_service: order_cross_sell,
+            get_customer_reactivation_service: customer_reactivation,
         }
     )
 

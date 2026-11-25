@@ -1,7 +1,11 @@
-"""Send post-order recommendations to the Salesforce Marketing endpoint."""
+"""Send recommendations to the Salesforce Marketing endpoint."""
 
 import httpx
 
+from app.application.dtos.customer_reactivation import (
+    CustomerReactivationReceipt,
+    CustomerReactivationRequest,
+)
 from app.application.dtos.order_cross_sell import (
     OrderCrossSellReceipt,
     OrderCrossSellRequest,
@@ -10,14 +14,19 @@ from app.application.exceptions import (
     SalesforceRequestException,
     SalesforceTimeoutException,
 )
-from app.application.ports import SalesforceMarketingGateway
+from app.application.ports import (
+    SalesforceCustomerReactivationGateway,
+    SalesforceMarketingGateway,
+)
 
 from .auth import get_access_token, invalidate_access_token
 from .payload import JsonValue
 from .settings import SalesforceSettings
 
 
-class SalesforceMarketingAPI(SalesforceMarketingGateway):
+class SalesforceMarketingAPI(
+    SalesforceMarketingGateway, SalesforceCustomerReactivationGateway
+):
     def __init__(
         self,
         settings: SalesforceSettings | None = None,
@@ -29,16 +38,48 @@ class SalesforceMarketingAPI(SalesforceMarketingGateway):
     async def send_order_cross_sell(
         self, request: OrderCrossSellRequest
     ) -> OrderCrossSellReceipt:
-        settings = self._settings or SalesforceSettings.load()
         payload: dict[str, JsonValue] = {
             "customer_id": str(request.customer_id),
             "order_id": request.order_id,
             "related_product": [str(product_id) for product_id in request.product_ids],
         }
+        response = await self._submit(payload)
+        return OrderCrossSellReceipt(
+            _parse_receipt(
+                response,
+                expected_flow="recommended_products",
+                expected_count=len(request.product_ids),
+                operation="cross-selling",
+            )
+        )
+
+    async def send_customer_reactivation(
+        self, request: CustomerReactivationRequest
+    ) -> CustomerReactivationReceipt:
+        payload: dict[str, JsonValue] = {
+            "customer_id": str(request.customer_id),
+            "related_product": [str(product_id) for product_id in request.product_ids],
+            "related_product2": [
+                str(product_id) for product_id in request.follow_up_product_ids
+            ],
+        }
+        response = await self._submit(payload)
+        return CustomerReactivationReceipt(
+            _parse_receipt(
+                response,
+                expected_flow="cross_sell_products",
+                expected_count=len(request.product_ids)
+                + len(request.follow_up_product_ids),
+                operation="customer reactivation",
+            )
+        )
+
+    async def _submit(self, payload: dict[str, JsonValue]) -> httpx.Response:
+        settings = self._settings or SalesforceSettings.load()
         if self._http_client is not None:
-            return await self._send(self._http_client, settings, payload, request)
+            return await self._send(self._http_client, settings, payload)
         async with httpx.AsyncClient(follow_redirects=False) as client:
-            return await self._send(client, settings, payload, request)
+            return await self._send(client, settings, payload)
 
     @staticmethod
     async def _post(
@@ -69,8 +110,7 @@ class SalesforceMarketingAPI(SalesforceMarketingGateway):
         client: httpx.AsyncClient,
         settings: SalesforceSettings,
         payload: dict[str, JsonValue],
-        request: OrderCrossSellRequest,
-    ) -> OrderCrossSellReceipt:
+    ) -> httpx.Response:
         token = await get_access_token(client, settings)
         response = await self._post(client, settings, payload, token)
         if response.status_code == 401:
@@ -79,24 +119,24 @@ class SalesforceMarketingAPI(SalesforceMarketingGateway):
             response = await self._post(client, settings, payload, token)
             if response.status_code == 401:
                 invalidate_access_token(settings, token)
-        if response.status_code != 201:
-            raise SalesforceRequestException(
-                f"Salesforce Marketing rejected cross-selling (HTTP {response.status_code})",
-                remote_status=response.status_code,
-            )
-        return _parse_receipt(response, len(request.product_ids))
+        return response
 
 
 def _parse_receipt(
-    response: httpx.Response, expected_count: int
-) -> OrderCrossSellReceipt:
+    response: httpx.Response, *, expected_flow: str, expected_count: int, operation: str
+) -> tuple[str, ...]:
+    if response.status_code != 201:
+        raise SalesforceRequestException(
+            f"Salesforce Marketing rejected {operation} (HTTP {response.status_code})",
+            remote_status=response.status_code,
+        )
     try:
         body = response.json()
         records = body["recordIds"]
         count = body["recordsCreated"]
         if (
             body["success"] is not True
-            or body["flow"] != "recommended_products"
+            or body["flow"] != expected_flow
             or type(count) is not int
             or count != expected_count
             or not isinstance(records, list)
@@ -106,6 +146,6 @@ def _parse_receipt(
             raise ValueError
     except (ValueError, TypeError, KeyError):
         raise SalesforceRequestException(
-            "Salesforce Marketing returned an invalid cross-selling result"
+            f"Salesforce Marketing returned an invalid {operation} result"
         ) from None
-    return OrderCrossSellReceipt(tuple(records))
+    return tuple(records)

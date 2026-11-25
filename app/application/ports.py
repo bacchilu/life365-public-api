@@ -20,6 +20,10 @@ from app.application.dtos.customer_integration.export import (
     CustomerExportEvent,
     CustomerExportResult,
 )
+from app.application.dtos.customer_reactivation import (
+    CustomerReactivationReceipt,
+    CustomerReactivationRequest,
+)
 from app.application.dtos.order_cross_sell import (
     OrderCrossSellReceipt,
     OrderCrossSellRequest,
@@ -97,6 +101,18 @@ class SalesforceMarketingGateway(Protocol):
     async def send_order_cross_sell(
         self, request: OrderCrossSellRequest
     ) -> OrderCrossSellReceipt: ...
+
+
+class CustomerReactivationReader(Protocol):
+    async def is_inactive(self, customer_id: int) -> bool | None:
+        """Return None if the customer does not exist, otherwise eligibility."""
+        ...
+
+
+class SalesforceCustomerReactivationGateway(Protocol):
+    async def send_customer_reactivation(
+        self, request: CustomerReactivationRequest
+    ) -> CustomerReactivationReceipt: ...
 
 
 class CustomerSynchronizationGateway(Protocol):

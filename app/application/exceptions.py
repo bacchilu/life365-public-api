@@ -19,7 +19,11 @@ class CustomerSynchronizationException(Exception):
 
 
 class CustomerNotFoundException(CustomerSynchronizationException):
-    """Raised when an update refers to a customer that does not exist."""
+    """The customer does not exist in the selected Life365 database."""
+
+
+class CustomerReactivationNotReadyException(Exception):
+    """The customer does not meet the inactivity requirement."""
 
 
 class InvalidCustomerReferenceException(CustomerSynchronizationException):

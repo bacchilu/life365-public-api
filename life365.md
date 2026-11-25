@@ -410,6 +410,42 @@ Anche `/sandbox` legge l'ordine dal proprio database e invia realmente verso
 l'API Marketing sullo stesso host usato per l'autenticazione Salesforce.
 Gli ordini del seed non sono idonei così come sono.
 
+## Riattivazione clienti inattivi (Flusso 2)
+
+`POST /integrations/salesforce/customers/{customer_id}/marketing/reactivation`
+invia a Salesforce Marketing i consigli preparati dal chiamante. Richiede
+il ruolo `integration`. Il cliente deve esistere e il suo ultimo ordine
+in stato `CONFIRMED`, `DELIVERED` o `UNDELIVERABLE` deve risalire a più di
+90 giorni. Un cliente senza ordini in questi stati non è idoneo.
+
+```bash
+curl --fail-with-body -sS -X POST \
+  "$API_URL/integrations/salesforce/customers/$CUSTOMER_ID/marketing/reactivation" \
+  -H "Authorization: Bearer $AUTH_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"related_product":["101","102","103","104"],"related_product2":["105","106","107","108"]}'
+```
+
+Inviare quattro ID Life365 per la prima email e altri quattro per il follow-up
+previsto dopo sette giorni, come stringhe decimali distinte. Se non è previsto
+un follow-up, inviare `"related_product2": []`: la seconda lista è obbligatoria
+anche quando è vuota. Non inviare `customer_id` nel body né `order_id`. Il
+cliente e tutti i prodotti devono già essere sincronizzati con Salesforce.
+
+- `201`: Salesforce ha accettato le liste. La risposta contiene `success`,
+  `flow: "cross_sell_products"`, `recordsCreated` e `recordIds`. Non conferma
+  l'invio delle email.
+- `404`: cliente assente nel database dell'ambiente selezionato.
+- `409`: cliente non idoneo secondo la regola dei 90 giorni.
+- `422`: ID o liste non validi.
+- `502`, `503`, `504`: errore a monte, configurazione/database indisponibili
+  o timeout. Dopo un timeout l'esito remoto può essere incerto.
+
+L'API non calcola raccomandazioni e non programma l'invio. Il cron esistente
+non chiama questo endpoint. Il chiamante decide quando inviare e previene
+invii duplicati. Anche `/sandbox` legge dal proprio database e invia realmente
+all'API Marketing configurata.
+
 ## Quando richiamare la sincronizzazione
 
 1. Creare o modificare il record attraverso gli strumenti Life365 esistenti.

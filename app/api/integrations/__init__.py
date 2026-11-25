@@ -1,5 +1,8 @@
 from fastapi import APIRouter
 
+from app.api.integrations.customer_reactivation import (
+    router as customer_reactivation_router,
+)
 from app.api.integrations.exports import router as export_router
 from app.api.integrations.order_cross_sell import router as order_cross_sell_router
 from app.api.integrations.order_exports import router as order_export_router
@@ -12,5 +15,6 @@ router.include_router(export_router)
 router.include_router(product_export_router)
 router.include_router(order_export_router)
 router.include_router(order_cross_sell_router)
+router.include_router(customer_reactivation_router)
 
 __all__ = ["router"]

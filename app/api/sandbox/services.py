@@ -1,5 +1,8 @@
 """Local data and sessions; exports use the real configured Salesforce API."""
 
+from app.api.integrations.customer_reactivation_dependencies import (
+    build_customer_reactivation_service,
+)
 from app.api.integrations.export_dependencies import get_salesforce_customer_gateway
 from app.api.integrations.order_cross_sell_dependencies import (
     build_order_cross_sell_service,
@@ -10,6 +13,9 @@ from app.api.integrations.product_export_dependencies import (
 )
 from app.application.services.auth_service import AuthService
 from app.application.services.customer_export_service import CustomerExportService
+from app.application.services.customer_reactivation_service import (
+    CustomerReactivationService,
+)
 from app.application.services.customer_service import CustomerService
 from app.application.services.customer_synchronization_service import (
     CustomerSynchronizationService,
@@ -87,6 +93,9 @@ class SandboxServices:
 
     def order_cross_sell(self) -> OrderCrossSellService:
         return build_order_cross_sell_service(self._settings.database_connection)
+
+    def customer_reactivation(self) -> CustomerReactivationService:
+        return build_customer_reactivation_service(self._settings.database_connection)
 
     def customer_synchronization(
         self, client_ip: str | None
