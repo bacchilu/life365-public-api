@@ -10,7 +10,6 @@ class InactiveCustomer:
 
 
 class CustomerSyncStatus(StrEnum):
-    PENDING = "pending"
     SUCCEEDED = "succeeded"
     FAILED = "failed"
 
@@ -22,19 +21,3 @@ class CustomerSyncResult:
     completed_at: datetime
     http_status: int | None = None
     error: str | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class CustomerSyncRecord:
-    customer: InactiveCustomer
-    status: CustomerSyncStatus
-    attempt_count: int
-    completed_at: datetime | None
-    http_status: int | None
-    error: str | None
-
-
-@dataclass(frozen=True, slots=True)
-class CustomerSyncRun:
-    generated_at: datetime
-    completed_at: datetime | None
