@@ -6,7 +6,7 @@ from psycopg.rows import scalar_row
 from app.application.exceptions import DBException
 from app.application.ports import CustomerReactivationReader
 
-# Match the eligibility criterion in the inactive-customer collection job.
+# Match the inactive-customer job in life365-portal-api.
 _QUERY = """
     SELECT COALESCE((
         SELECT MAX(o.order_date) < CURRENT_TIMESTAMP - INTERVAL '90 days'

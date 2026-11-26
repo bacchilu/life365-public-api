@@ -441,10 +441,11 @@ cliente e tutti i prodotti devono già essere sincronizzati con Salesforce.
 - `502`, `503`, `504`: errore a monte, configurazione/database indisponibili
   o timeout. Dopo un timeout l'esito remoto può essere incerto.
 
-L'API non calcola raccomandazioni e non programma l'invio. Il cron esistente
-non chiama questo endpoint. Il chiamante decide quando inviare e previene
-invii duplicati. Anche `/sandbox` legge dal proprio database e invia realmente
-all'API Marketing configurata.
+L'API non calcola raccomandazioni e non programma l'invio. Il cron in
+`life365-portal-api` seleziona i clienti inattivi e scrive solo il riepilogo
+nei log; per ora non chiama questo endpoint. Il chiamante decide quando
+inviare e previene invii duplicati. Anche `/sandbox` legge dal proprio
+database e invia realmente all'API Marketing configurata.
 
 ## Quando richiamare la sincronizzazione
 

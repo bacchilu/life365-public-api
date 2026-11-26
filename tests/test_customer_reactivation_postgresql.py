@@ -8,7 +8,6 @@ from app.application.dtos.customer_reactivation import (
     CustomerReactivationReceipt,
     CustomerReactivationRequest,
 )
-from crons.inactive_customers.database import collect_inactive_customers
 from tests.test_sandbox_postgresql import _app, _client, _headers, _state
 from tests.test_sandbox_postgresql import database_url as seeded_database_fixture
 
@@ -16,7 +15,7 @@ database_url = seeded_database_fixture
 
 
 @pytest.mark.anyio
-async def test_reactivation_checks_same_eligibility_as_cron_without_writes(
+async def test_reactivation_checks_last_qualifying_order_without_writes(
     database_url: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     sent: list[CustomerReactivationRequest] = []
@@ -51,8 +50,6 @@ async def test_reactivation_checks_same_eligibility_as_cron_without_writes(
                     """,
                     (logistic_state, age),
                 )
-            customers = await collect_inactive_customers(database_url)
-            assert (4 in {customer.id for customer in customers}) == (expected == 201)
             before = _state(database_url)
             response = await client.post(path.format(4), headers=headers, json=body)
             assert response.status_code == expected
