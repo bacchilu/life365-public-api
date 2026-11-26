@@ -442,10 +442,13 @@ cliente e tutti i prodotti devono già essere sincronizzati con Salesforce.
   o timeout. Dopo un timeout l'esito remoto può essere incerto.
 
 L'API non calcola raccomandazioni e non programma l'invio. Il cron in
-`life365-portal-api` seleziona i clienti inattivi e scrive solo il riepilogo
-nei log; per ora non chiama questo endpoint. Il chiamante decide quando
-inviare e previene invii duplicati. Anche `/sandbox` legge dal proprio
-database e invia realmente all'API Marketing configurata.
+`life365-portal-api` seleziona i clienti inattivi ogni notte e chiama questo
+endpoint in produzione per ogni cliente, con quattro prodotti fissi e la
+lista di follow-up vuota. Registra ogni richiesta e il relativo esito nei
+log e si ferma al primo invio non confermato. Il cron non conserva uno
+storico degli invii: un cliente che resta inattivo può essere selezionato
+di nuovo. Anche `/sandbox` legge dal proprio database e invia realmente
+all'API Marketing configurata.
 
 ## Quando richiamare la sincronizzazione
 
