@@ -55,11 +55,11 @@ rich-toolkit==0.20.6
 rignore==0.8.1
 rstr==4.0.0
 schwifty==2026.11.4
-sentry-sdk==3.0.0
+sentry-sdk==3.0.1
 shellingham==1.5.4
 starlette==1.10.0
 truststore==0.10.5
-typer==0.29.2
+typer==0.29.3
 typing-inspection==0.4.5
 typing_extensions==4.16.0
 urllib3==2.8.0
