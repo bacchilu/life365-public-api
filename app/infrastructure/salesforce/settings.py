@@ -87,7 +87,7 @@ class SalesforceSettings:
             **dotenv_values(Path(__file__).resolve().parents[3] / ".env"),
             **os.environ,
         }
-        token_url = values.get("SALESFORCE_TOKEN_URL", "") or ""
+        token_url = values.get("SALESFORCE_SANDBOX_TOKEN_URL", "") or ""
         try:
             token = urlsplit(token_url)
             customer_url = (
@@ -97,8 +97,8 @@ class SalesforceSettings:
             return cls(
                 token_url,
                 customer_url,
-                values.get("SALESFORCE_CLIENT_ID") or "",
-                values.get("SALESFORCE_CLIENT_SECRET") or "",
+                values.get("SALESFORCE_SANDBOX_CLIENT_ID") or "",
+                values.get("SALESFORCE_SANDBOX_CLIENT_SECRET") or "",
                 float(values.get("SALESFORCE_TIMEOUT_SECONDS") or "30"),
                 product_url=values.get("SALESFORCE_PRODUCT_SYNC_URL") or None,
                 order_url=values.get("SALESFORCE_ORDER_SYNC_URL") or None,

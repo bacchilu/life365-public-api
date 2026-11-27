@@ -100,8 +100,8 @@ and use that final ID as `productReferenceId`.
 
 ## Configuration
 
-Reuse `SALESFORCE_TOKEN_URL`, `SALESFORCE_CLIENT_ID`,
-`SALESFORCE_CLIENT_SECRET`, and `SALESFORCE_TIMEOUT_SECONDS` (default 30).
+Reuse `SALESFORCE_SANDBOX_TOKEN_URL`, `SALESFORCE_SANDBOX_CLIENT_ID`,
+`SALESFORCE_SANDBOX_CLIENT_SECRET`, and `SALESFORCE_TIMEOUT_SECONDS` (default 30).
 The access token is cached in process memory and shared with customer exports.
 Callers provide a Life365 JWT, not a Salesforce access token.
 

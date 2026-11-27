@@ -49,9 +49,9 @@ Read from `.env` and the process environment (environment wins), without changin
 the active environment during a request:
 
 ```dotenv
-SALESFORCE_TOKEN_URL=https://java-nosoftware-4269--partial.sandbox.my.salesforce.com/services/oauth2/token
-SALESFORCE_CLIENT_ID=<client id supplied privately>
-SALESFORCE_CLIENT_SECRET=<client secret supplied privately>
+SALESFORCE_SANDBOX_TOKEN_URL=https://java-nosoftware-4269--partial.sandbox.my.salesforce.com/services/oauth2/token
+SALESFORCE_SANDBOX_CLIENT_ID=<client id supplied privately>
+SALESFORCE_SANDBOX_CLIENT_SECRET=<client secret supplied privately>
 SALESFORCE_CUSTOMER_SYNC_URL=https://java-nosoftware-4269--partial.sandbox.my.salesforce.com/services/apexrest/customer/sync/
 SALESFORCE_TIMEOUT_SECONDS=30
 ```

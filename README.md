@@ -108,9 +108,11 @@ PUT sends the full current customer, not a partial patch. Life365 values take
 priority over the shared Salesforce fields, including the documented boolean
 normalization rules. Save changes in Life365 before requesting synchronization.
 
-The API server must have `SALESFORCE_TOKEN_URL`, `SALESFORCE_CLIENT_ID`, and
-`SALESFORCE_CLIENT_SECRET` configured. It manages Salesforce authentication and
-access-token renewal; callers supply only their **Life365 JWT**.
+The API server must have `SALESFORCE_SANDBOX_TOKEN_URL`,
+`SALESFORCE_SANDBOX_CLIENT_ID`, and `SALESFORCE_SANDBOX_CLIENT_SECRET` configured
+for Salesforce UAT. Rename the old OAuth variables in existing deployments
+before recreating the API container. The server manages Salesforce
+authentication and access-token renewal; callers supply only their **Life365 JWT**.
 
 ### Authenticate
 

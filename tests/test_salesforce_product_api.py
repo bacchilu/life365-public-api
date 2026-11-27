@@ -354,9 +354,9 @@ def test_optional_product_url_configuration(monkeypatch: pytest.MonkeyPatch) -> 
         == "https://unit.my.salesforce.com/services/apexrest/product/sync/"
     )
     for key, value in {
-        "SALESFORCE_TOKEN_URL": _SETTINGS.token_url,
-        "SALESFORCE_CLIENT_ID": _SETTINGS.client_id,
-        "SALESFORCE_CLIENT_SECRET": _SETTINGS.client_secret,
+        "SALESFORCE_SANDBOX_TOKEN_URL": _SETTINGS.token_url,
+        "SALESFORCE_SANDBOX_CLIENT_ID": _SETTINGS.client_id,
+        "SALESFORCE_SANDBOX_CLIENT_SECRET": _SETTINGS.client_secret,
         "SALESFORCE_CUSTOMER_SYNC_URL": _SETTINGS.customer_url,
         "SALESFORCE_PRODUCT_SYNC_URL": "https://unit.my.salesforce.com/custom-product/",
     }.items():

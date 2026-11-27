@@ -236,14 +236,14 @@ def test_order_url_default_and_environment(monkeypatch: pytest.MonkeyPatch) -> N
         _SETTINGS.order_sync_url
         == "https://unit.my.salesforce.com/services/apexrest/order/sync/"
     )
-    monkeypatch.setenv("SALESFORCE_TOKEN_URL", _SETTINGS.token_url)
+    monkeypatch.setenv("SALESFORCE_SANDBOX_TOKEN_URL", _SETTINGS.token_url)
     monkeypatch.setenv("SALESFORCE_CUSTOMER_SYNC_URL", _SETTINGS.customer_url)
     monkeypatch.setenv("SALESFORCE_PRODUCT_SYNC_URL", "")
     monkeypatch.setenv(
         "SALESFORCE_ORDER_SYNC_URL", "https://unit.my.salesforce.com/custom/order"
     )
-    monkeypatch.setenv("SALESFORCE_CLIENT_ID", "test")
-    monkeypatch.setenv("SALESFORCE_CLIENT_SECRET", "secret")
+    monkeypatch.setenv("SALESFORCE_SANDBOX_CLIENT_ID", "test")
+    monkeypatch.setenv("SALESFORCE_SANDBOX_CLIENT_SECRET", "secret")
     assert SalesforceSettings.load().order_sync_url.endswith("/custom/order")
 
 

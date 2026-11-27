@@ -137,7 +137,8 @@ Production already has its ADMGST product.
 
 ## Configuration, Delivery And Errors
 
-Reuse SALESFORCE_TOKEN_URL, SALESFORCE_CLIENT_ID, SALESFORCE_CLIENT_SECRET,
+Reuse SALESFORCE_SANDBOX_TOKEN_URL, SALESFORCE_SANDBOX_CLIENT_ID,
+SALESFORCE_SANDBOX_CLIENT_SECRET,
 SALESFORCE_TIMEOUT_SECONDS and the process-local token cache shared with customer
 and product exports. Optional SALESFORCE_ORDER_SYNC_URL defaults to the token
 origin plus /services/apexrest/order/sync/. Overrides require HTTPS, same origin,

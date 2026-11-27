@@ -381,9 +381,9 @@ def test_configuration_validates_urls_and_hides_credentials(
         with pytest.raises(SalesforceConfigurationException):
             replace(_SETTINGS, customer_url=url)
     assert _SETTINGS.client_secret not in repr(_SETTINGS)
-    monkeypatch.setenv("SALESFORCE_TOKEN_URL", _SETTINGS.token_url)
-    monkeypatch.setenv("SALESFORCE_CLIENT_ID", _SETTINGS.client_id)
-    monkeypatch.setenv("SALESFORCE_CLIENT_SECRET", _SETTINGS.client_secret)
+    monkeypatch.setenv("SALESFORCE_SANDBOX_TOKEN_URL", _SETTINGS.token_url)
+    monkeypatch.setenv("SALESFORCE_SANDBOX_CLIENT_ID", _SETTINGS.client_id)
+    monkeypatch.setenv("SALESFORCE_SANDBOX_CLIENT_SECRET", _SETTINGS.client_secret)
     monkeypatch.setenv("SALESFORCE_CUSTOMER_SYNC_URL", "")
     assert SalesforceSettings.load().customer_url == _SETTINGS.customer_url
 
